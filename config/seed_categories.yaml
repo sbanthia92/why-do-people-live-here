@@ -1,0 +1,29 @@
+ghost_town:
+  - Ghost_towns_in_the_United_States
+  - Ghost_towns_in_Canada
+  - Ghost_towns_in_Australia
+  - Mining_communities
+
+company_town:
+  - Company_towns
+  - Single-industry_towns
+
+colonial_resettlement:
+  - Populated_places_established_by_colonial_governments
+
+extreme_climate:
+  - Northernmost_settlements
+  - Southernmost_settlements
+  - Permafrost_communities
+
+island_community:
+  - Inhabited_islands
+  - Remote_islands
+
+isolated:
+  - Fly-in_communities
+  - Road-inaccessible_communities
+
+exclave:
+  - Exclaves
+  - Enclaves

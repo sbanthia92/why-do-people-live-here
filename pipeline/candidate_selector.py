@@ -4,10 +4,11 @@ Layer 1 is a cheap pre-filter that runs before any LLM calls.  It keeps only
 articles that have enough text and structural depth to be worth researching.
 """
 
+import asyncio
+import os
 import random
 import urllib.parse
 from pathlib import Path
-from typing import Optional
 
 import httpx
 import yaml
@@ -18,42 +19,109 @@ console = Console()
 _SEED_PATH = Path(__file__).parent.parent / "config" / "seed_categories.yaml"
 _WP_API = "https://en.wikipedia.org/w/api.php"
 _WP_REST = "https://en.wikipedia.org/api/rest_v1/page/summary"
+# Wikimedia rejects requests without a descriptive User-Agent (HTTP 403)
+_HEADERS = {
+    "User-Agent": os.getenv(
+        "WIKIMEDIA_USER_AGENT", "whydopeoplelivehere/0.1 (contact@example.com)"
+    )
+}
 
-# Minimum extract length to pass layer 1
+# Minimum full-article plain-text length to pass layer 1
 _MIN_EXTRACT_CHARS = 500
 # Layer 1 required sections (any one match is enough)
-_REQUIRED_SECTIONS = {"Economy", "History", "Background", "Origins"}
+# Matched as case-insensitive substrings, so "Origin" also covers "Origins"
+_REQUIRED_SECTIONS = {"Economy", "History", "Background", "Origin"}
 # Max candidates to attempt per category before giving up
 _MAX_TRIES = 10
+# Max subcategories to descend into (one level) per seed category
+_MAX_SUBCATEGORIES = 10
+_NS_CATEGORY = 14
+# HTTP 429 handling: retry up to this many times, sleeping for Retry-After (capped)
+_MAX_RETRIES = 3
+_MAX_RETRY_WAIT_S = 60.0
 
 
-def _load_seed_categories() -> dict[str, list[str]]:
-    """Load story_category → [category_slug, ...] mapping from seed YAML."""
+async def _get(client: httpx.AsyncClient, url: str, **kwargs) -> httpx.Response:
+    """client.get that waits and retries when Wikimedia rate-limits us (HTTP 429)."""
+    for attempt in range(_MAX_RETRIES + 1):
+        resp = await client.get(url, **kwargs)
+        if resp.status_code != 429 or attempt == _MAX_RETRIES:
+            return resp
+        try:
+            wait = float(resp.headers.get("retry-after", 2 ** (attempt + 1)))
+        except ValueError:
+            wait = 2 ** (attempt + 1)
+        wait = min(wait, _MAX_RETRY_WAIT_S)
+        console.log(f"[candidate_selector] HTTP 429 — retrying in {wait:.0f}s: {url}")
+        await asyncio.sleep(wait)
+    return resp  # unreachable; keeps type checkers happy
+
+
+def _load_seed_categories() -> dict[str, dict[str, list[str]]]:
+    """Load story_category → {"categories": [...], "places": [...]} from seed YAML.
+
+    `categories` are Wikipedia category slugs to crawl; `places` are hand-picked
+    article titles. Either key may be absent.
+    """
     with open(_SEED_PATH) as f:
         return yaml.safe_load(f)
 
 
-async def fetch_category_members(category_slug: str, limit: int = 100) -> list[dict]:
-    """Fetch article titles from a Wikipedia category via the categorymembers API.
+def _article_url(title: str) -> str:
+    encoded = urllib.parse.quote(title.replace(" ", "_"))
+    return f"https://en.wikipedia.org/wiki/{encoded}"
 
-    Uses the MediaWiki action API:
-      action=query & list=categorymembers & cmtitle=Category:{slug} & cmnamespace=0
-    cmnamespace=0 restricts results to article pages only (no talk/file pages).
-    Returns a list of dicts with keys: title, pageid, wikipedia_url.
-    """
+
+def _place_members(titles: list[str]) -> list[dict]:
+    """Turn hand-picked article titles into the same shape fetch_category_members returns."""
+    return [{"title": t, "wikipedia_url": _article_url(t)} for t in titles]
+
+
+async def _get_category_members(
+    client: httpx.AsyncClient, category_slug: str, limit: int, namespaces: str
+) -> list[dict]:
+    """Raw categorymembers query. Raises httpx errors to the caller."""
     params = {
         "action": "query",
         "list": "categorymembers",
         "cmtitle": f"Category:{category_slug}",
         "cmlimit": str(limit),
-        "cmnamespace": "0",
+        "cmnamespace": namespaces,
         "format": "json",
     }
+    resp = await _get(client, _WP_API, params=params)
+    resp.raise_for_status()
+    return resp.json().get("query", {}).get("categorymembers", [])
+
+
+async def fetch_category_members(category_slug: str, limit: int = 100) -> list[dict]:
+    """Fetch article titles from a Wikipedia category and one level of its subcategories.
+
+    Uses the MediaWiki action API:
+      action=query & list=categorymembers & cmtitle=Category:{slug} & cmnamespace=0|14
+    Namespace 0 is articles, 14 is subcategories. Many seed categories (e.g.
+    Ghost_towns_in_the_United_States) hold few articles directly and split the rest
+    into subcategories, so up to _MAX_SUBCATEGORIES randomly chosen subcategories are
+    also fetched (articles only — no deeper recursion). `limit` applies per request.
+    Returns a list of dicts with keys: title, pageid, wikipedia_url.
+    """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(_WP_API, params=params)
-            resp.raise_for_status()
-            data = resp.json()
+        async with httpx.AsyncClient(timeout=10.0, headers=_HEADERS) as client:
+            members = await _get_category_members(client, category_slug, limit, "0|14")
+
+            subcats = [m["title"] for m in members if m.get("ns") == _NS_CATEGORY]
+            members = [m for m in members if m.get("ns", 0) == 0]
+
+            random.shuffle(subcats)
+            for subcat in subcats[:_MAX_SUBCATEGORIES]:
+                sub_slug = subcat.removeprefix("Category:").replace(" ", "_")
+                try:
+                    members += await _get_category_members(client, sub_slug, limit, "0")
+                except (httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+                    # A bad subcategory shouldn't sink the whole parent category
+                    console.log(
+                        f"[candidate_selector] Skipping subcategory {sub_slug}: {exc!r}"
+                    )
     except httpx.TimeoutException:
         console.log(f"[candidate_selector] TIMEOUT fetching category: {category_slug}")
         return []
@@ -64,31 +132,42 @@ async def fetch_category_members(category_slug: str, limit: int = 100) -> list[d
         )
         return []
 
-    members = data.get("query", {}).get("categorymembers", [])
     results = []
+    seen: set[int] = set()
     for m in members:
-        title = m["title"]
-        encoded = urllib.parse.quote(title.replace(" ", "_"))
+        # An article can sit in several subcategories at once
+        if m["pageid"] in seen:
+            continue
+        seen.add(m["pageid"])
         results.append(
             {
-                "title": title,
+                "title": m["title"],
                 "pageid": m["pageid"],
-                "wikipedia_url": f"https://en.wikipedia.org/wiki/{encoded}",
+                "wikipedia_url": _article_url(m["title"]),
             }
         )
     return results
 
 
-async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
+async def layer1_filter(
+    wikipedia_url: str, require_coordinates: bool = False
+) -> tuple[bool, dict]:
     """Run cheap structural checks on a Wikipedia article before any LLM call.
 
     Checks:
-      1. Extract length >= 500 chars — ensures the article is substantive.
-      2. A 'description' field is present — disambiguation pages lack this.
-      3. The article has at least one section in {Economy, History, Background, Origins}
-         with more than one paragraph — ensures the place has documented depth.
+      1. A 'description' field is present in the REST summary — disambiguation pages
+         lack this.
+      2. Full-article plain text >= 500 chars — ensures the article is substantive.
+         (The REST summary extract is only the lead paragraph, usually well under 500
+         chars even for long articles, so it can't be used for this check.)
+      3. The article has at least one section matching {Economy, History, Background, Origin}
+         — ensures the place has documented depth.
+      4. With require_coordinates=True, the summary must carry geographic coordinates.
+         Category crawls pull in films, lists and concept articles ("Company town");
+         only real places have coordinates. Hand-picked places skip this check.
 
-    Returns (passed, metadata) where metadata contains extract, section_names, char_count.
+    Returns (passed, metadata) where metadata contains extract (full plain text),
+    section_names, char_count.
     On any unexpected error returns (False, {}).
     """
     title = wikipedia_url.rstrip("/").split("/wiki/")[-1]
@@ -97,11 +176,13 @@ async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
     metadata: dict = {"extract": "", "section_names": [], "char_count": 0}
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, headers=_HEADERS) as client:
             # --- summary check ---
-            summary_url = f"{_WP_REST}/{urllib.parse.quote(title)}"
+            # title may already be percent-encoded (see fetch_category_members); normalise
+            # before re-encoding so "%2C" doesn't become "%252C"
+            summary_url = f"{_WP_REST}/{urllib.parse.quote(urllib.parse.unquote(title))}"
             try:
-                sr = await client.get(summary_url)
+                sr = await _get(client, summary_url)
                 sr.raise_for_status()
                 summary = sr.json()
             except httpx.TimeoutException:
@@ -116,7 +197,48 @@ async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
                 )
                 return False, {}
 
-            extract = summary.get("extract", "")
+            if "description" not in summary:
+                console.log(
+                    f"[candidate_selector] Layer 1 FAIL: {title_decoded}"
+                    " (no description — likely disambiguation)"
+                )
+                return False, metadata
+
+            if require_coordinates and "coordinates" not in summary:
+                console.log(
+                    f"[candidate_selector] Layer 1 FAIL: {title_decoded}"
+                    " (no coordinates — not a place)"
+                )
+                return False, metadata
+
+            # --- full-article length check ---
+            extract_params = {
+                "action": "query",
+                "prop": "extracts",
+                "explaintext": "1",
+                "titles": title_decoded,
+                "redirects": "1",
+                "format": "json",
+                "formatversion": "2",
+            }
+            try:
+                er = await _get(client, _WP_API, params=extract_params)
+                er.raise_for_status()
+                extract_data = er.json()
+            except httpx.TimeoutException:
+                console.log(
+                    f"[candidate_selector] TIMEOUT fetching extract: {title_decoded}"
+                )
+                return False, metadata
+            except httpx.HTTPStatusError as exc:
+                console.log(
+                    f"[candidate_selector] HTTP {exc.response.status_code} extract:"
+                    f" {title_decoded}"
+                )
+                return False, metadata
+
+            pages = extract_data.get("query", {}).get("pages", [])
+            extract = pages[0].get("extract", "") if pages else ""
             char_count = len(extract)
             metadata["extract"] = extract
             metadata["char_count"] = char_count
@@ -128,13 +250,6 @@ async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
                 )
                 return False, metadata
 
-            if "description" not in summary:
-                console.log(
-                    f"[candidate_selector] Layer 1 FAIL: {title_decoded}"
-                    " (no description — likely disambiguation)"
-                )
-                return False, metadata
-
             # --- sections check ---
             sections_params = {
                 "action": "parse",
@@ -143,7 +258,7 @@ async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
                 "format": "json",
             }
             try:
-                pr = await client.get(_WP_API, params=sections_params)
+                pr = await _get(client, _WP_API, params=sections_params)
                 pr.raise_for_status()
                 parse_data = pr.json()
             except httpx.TimeoutException:
@@ -193,40 +308,31 @@ async def layer1_filter(wikipedia_url: str) -> tuple[bool, dict]:
         return False, {}
 
 
-async def select_candidate(story_category: str, db_conn) -> Optional[dict]:
+async def select_candidate(story_category: str, db_conn) -> dict | None:
     """Pick a new candidate from a story_category, run layer 1, and persist if it passes.
 
-    Variety rotation: if the last 3 posts in variety_log all share a region with
-    candidates from this category, return None to let the caller try another category.
-
-    Tries up to _MAX_TRIES members before returning None.
+    Sources are each crawled category plus (as one more source) the hand-picked
+    places list, tried in random order. Tries up to _MAX_TRIES members per source
+    before moving on; returns None when all sources are exhausted.
     """
-    seed = _load_seed_categories()
-    slugs = seed.get(story_category, [])
-    if not slugs:
+    seed = _load_seed_categories().get(story_category) or {}
+    places = seed.get("places") or []
+    sources: list[str | None] = list(seed.get("categories") or [])
+    if places:
+        sources.append(None)  # None = the hand-picked places list
+    if not sources:
         return None
 
-    # --- variety rotation guard ---
-    recent = await db_conn.fetch(
-        "SELECT region FROM variety_log ORDER BY posted_at DESC LIMIT 5"
-    )
-    recent_regions = [r["region"] for r in recent]
-    if len(recent_regions) >= 3 and len(set(recent_regions[:3])) == 1:
-        blocked_region = recent_regions[0]
-        console.log(
-            f"[candidate_selector] Variety rotation: blocking region '{blocked_region}'"
-            f" for story_category '{story_category}'"
-        )
-        # We don't know candidate regions at this point; caller can pass None back
-        # and retry another story_category. Signal by returning None only when ALL
-        # candidates we'd try are from the blocked region — resolved below after fetch.
-
-    random.shuffle(slugs)
-    for slug in slugs:
-        console.log(
-            f"[candidate_selector] Fetching category: {story_category} / {slug}"
-        )
-        members = await fetch_category_members(slug)
+    random.shuffle(sources)
+    for slug in sources:
+        if slug is None:
+            console.log(f"[candidate_selector] Using hand-picked places: {story_category}")
+            members = _place_members(places)
+        else:
+            console.log(
+                f"[candidate_selector] Fetching category: {story_category} / {slug}"
+            )
+            members = await fetch_category_members(slug)
         if not members:
             continue
 
@@ -248,10 +354,8 @@ async def select_candidate(story_category: str, db_conn) -> Optional[dict]:
 
             tries += 1
 
-            # Variety rotation: skip if candidate's region matches blocked region
-            # (Region is unknown pre-insert; we skip only after we retrieve it post-pass)
-
-            passed, meta = await layer1_filter(url)
+            # Crawled categories contain non-places; hand-picked lists are already vetted
+            passed, _ = await layer1_filter(url, require_coordinates=slug is not None)
 
             if not passed:
                 # Persist as failed so we never retry this article
@@ -289,15 +393,21 @@ async def select_candidate(story_category: str, db_conn) -> Optional[dict]:
     return None
 
 
-async def run_selector(db_conn) -> Optional[dict]:
+async def run_selector(db_conn, avoid_category: str | None = None) -> dict | None:
     """Iterate story_categories in random order, return first passing candidate.
 
     Loads seed_categories.yaml, shuffles story_category keys, calls select_candidate
     for each until one returns a result.  Returns None if all categories are exhausted.
+
+    `avoid_category` (the story_category of the most recent post) is tried last, so
+    back-to-back posts only share a story type when nothing else is available.
     """
     seed = _load_seed_categories()
     categories = list(seed.keys())
     random.shuffle(categories)
+    if avoid_category in categories:
+        categories.remove(avoid_category)
+        categories.append(avoid_category)
 
     for story_category in categories:
         console.log(f"[candidate_selector] Trying story_category: {story_category}")

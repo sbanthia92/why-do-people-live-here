@@ -7,7 +7,8 @@ name = "why-do-people-live-here"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
-    "anthropic",
+    "anthropic>=1.10",
+    "pydantic>=2",
     "asyncpg",
     "httpx",
     "tweepy",
@@ -21,6 +22,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "ruff",
+    "pgserver",  # embedded Postgres for the integration tests
 ]
 
 [tool.setuptools.packages.find]

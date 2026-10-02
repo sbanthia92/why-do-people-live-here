@@ -10,3 +10,5 @@ venv/
 
 # Embedded Postgres data for scripts/dry_run.py
 .dryrun-pg/
+# Markdown previews written when PREVIEW_DIR is set
+previews/

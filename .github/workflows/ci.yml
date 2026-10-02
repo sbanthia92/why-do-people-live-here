@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same branch makes the older run pointless
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install ruff
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is what the daily workflow and Dockerfile run; 3.12 is local development
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: pip install -e ".[dev]"
+      # No secrets are needed: Claude, Wikipedia and X are faked, and the integration
+      # tests start their own embedded Postgres.
+      - name: Test
+        run: pytest -q
+
+  seed-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - name: No place is listed twice
+        run: |
+          python - <<'PY'
+          import collections, sys, yaml
+          seed = yaml.safe_load(open("config/seed_categories.yaml"))
+          places = [p for cfg in seed.values() for p in (cfg.get("places") or [])]
+          dupes = [p for p, n in collections.Counter(places).items() if n > 1]
+          if dupes:
+              sys.exit(f"Listed more than once: {dupes}")
+          print(f"{len(places)} hand-picked places, no duplicates")
+          PY

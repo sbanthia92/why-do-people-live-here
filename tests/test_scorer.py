@@ -12,6 +12,7 @@ from pipeline.scorer import (
     Scores,
     compute_weighted_total,
     decide_post_format,
+    post_format_for,
     score_candidate,
 )
 
@@ -54,6 +55,9 @@ def test_decide_post_format_mid_score_returns_single() -> None:
     assert decide_post_format(THREAD_MIN_TOTAL - 0.5) == "single"
 
 
+_WHY = dict.fromkeys(DIMENSIONS, "why")
+
+
 def _db_pool() -> AsyncMock:
     pool = AsyncMock()
     pool.fetchrow.return_value = {"place_name": "Testville", "raw_research": "Brief [W]."}
@@ -64,13 +68,14 @@ def _db_pool() -> AsyncMock:
 async def test_score_candidate_persists_total_and_format() -> None:
     """Scores are totalled, mapped to a format, and written with status 'scored'."""
     pool = _db_pool()
-    parsed = Scores(**_scores(2, vivid_detail=1), justifications={"named_origin": "why"})
+    parsed = Scores(**_scores(2, vivid_detail=1), justifications=_WHY)
 
     with patch("pipeline.scorer.llm.parse", new=AsyncMock(return_value=parsed)):
         result = await score_candidate(pool, 7)
 
     assert result["total_weighted"] == 9.0
     assert result["post_format"] == "thread"
+    assert result["justifications"] == _WHY  # a plain dict, ready for the JSONB column
     insert_args, status_args = (c.args for c in pool.execute.call_args_list)
     assert insert_args[1] == 7 and insert_args[-1] == "thread"
     assert status_args[1:] == (7, "scored")
@@ -80,7 +85,7 @@ async def test_score_candidate_persists_total_and_format() -> None:
 async def test_score_candidate_skips_uncorroborated() -> None:
     """Corroboration 0 forces 'skip' even when the total would otherwise qualify."""
     pool = _db_pool()
-    parsed = Scores(**_scores(2, corroboration=0), justifications={})
+    parsed = Scores(**_scores(2, corroboration=0), justifications=_WHY)
 
     with patch("pipeline.scorer.llm.parse", new=AsyncMock(return_value=parsed)):
         result = await score_candidate(pool, 7)
@@ -88,3 +93,15 @@ async def test_score_candidate_skips_uncorroborated() -> None:
     assert result["total_weighted"] == 8.0
     assert result["post_format"] == "skip"
     assert pool.execute.call_args_list[-1].args[1:] == (7, "skipped")
+
+
+def test_unsurprising_place_gets_a_single_post_at_most() -> None:
+    """Contrast 0 caps the format at 'single', even with a thread-level total."""
+    scores = _scores(2, contrast_surprise=0)
+    scores["total_weighted"] = compute_weighted_total(scores)
+
+    assert scores["total_weighted"] >= THREAD_MIN_TOTAL
+    assert post_format_for(scores) == "single"
+    assert post_format_for({**scores, "contrast_surprise": 1}) == "thread"
+    # The cap never rescues a low total
+    assert post_format_for({**_scores(0, corroboration=1), "total_weighted": 1.0}) == "skip"

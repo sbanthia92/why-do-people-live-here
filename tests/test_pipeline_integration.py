@@ -67,7 +67,7 @@ class FakeWorld:
             return ResearchSummary(region=self.regions[place], summary=f"{place} brief [W][1].")
         if output_format is Scores:
             value = 0 if place in self.low_scoring else 2
-            return Scores(**dict.fromkeys(DIMENSIONS, value), justifications={"named_origin": "x"})
+            return Scores(**dict.fromkeys(DIMENSIONS, value), justifications=dict.fromkeys(DIMENSIONS, "x"))
         if output_format is Thread:
             return Thread(tweets=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."])
         return SinglePost(text=f"Why do people live in {place}?")
@@ -105,12 +105,21 @@ async def _statuses(db) -> dict[str, str]:
     return {r["place_name"]: r["status"] for r in await db.fetch("SELECT * FROM candidates")}
 
 
-async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypatch):
+async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypatch, tmp_path):
     world = FakeWorld({"island_community": {"places": ["Alpha Island"]}}, {"Alpha Island": "Oceania"})
 
     with world:
         monkeypatch.setenv("DRY_RUN", "true")
+        monkeypatch.setenv("PREVIEW_DIR", str(tmp_path))
         assert await run_once() == 1
+
+        preview = (tmp_path / "0001-alpha-island.md").read_text()
+        assert preview.startswith("# Alpha Island — thread, 10/10\n")
+        assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
+        assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
+        assert "**4/4**" in preview and "> Source: https://en.wikipedia.org/wiki/Alpha_Island" in preview
+        assert "| named origin | 2/2 | x |" in preview
+        assert "## Web sources (1)\n\n- [Example](https://example.org/a)" in preview
 
         post = await db.fetchrow("SELECT * FROM posts")
         assert post["dry_run"] is True and post["x_post_id"] is None
@@ -131,6 +140,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         monkeypatch.setenv("DRY_RUN", "false")
         assert await run_once() == 1
 
+    assert len(list(tmp_path.iterdir())) == 1  # real posts write no preview file
     assert await _statuses(db) == {"Alpha Island": "posted"}
     assert world.researched == ["Alpha Island"]  # the real run reused the stored research
     real = await db.fetchrow("SELECT * FROM posts WHERE NOT dry_run")
@@ -171,6 +181,21 @@ async def test_parallel_prepares_candidates_together_and_keeps_variety(db):
     order = [p["text"].removeprefix("Why do people live in ").rstrip("?") for p in world.posted]
     # Prepared together, but still posted one at a time with story types alternating
     assert order == ["Alpha Island", "Gamma Town", "Beta Island"]
+
+
+async def test_parallel_batch_spreads_across_story_types(db):
+    seed = {
+        "island_community": {"places": ["Alpha Island", "Beta Island", "Delta Island"]},
+        "exclave": {"places": ["Gamma Town"]},
+    }
+    regions = dict.fromkeys(["Alpha Island", "Beta Island", "Delta Island"], "Oceania")
+    regions["Gamma Town"] = "Europe"
+
+    with FakeWorld(seed, regions) as world:
+        assert await run_once(posts=1, parallel=2) == 1
+
+    # With islands listed first, a batch of two would once have been two islands
+    assert sorted(world.researched) == ["Alpha Island", "Gamma Town"]
 
 
 async def test_sequential_run_prepares_one_candidate_at_a_time(db):

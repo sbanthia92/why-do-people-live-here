@@ -1,4 +1,4 @@
-"""Main entry point. Orchestrates one full pipeline run: select → research → score → generate → publish."""
+"""Main entry point. Orchestrates one full pipeline run: select → research → assess → generate → publish."""
 
 import argparse
 import asyncio
@@ -8,18 +8,18 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from db.client import create_pool
+from pipeline.assessor import assess_candidate
 from pipeline.candidate_selector import run_selector
 from pipeline.content_generator import run_content_generation
 from pipeline.llm import LLMRefusalError
 from pipeline.publisher import run_publish
 from pipeline.researcher import run_research
-from pipeline.scorer import score_candidate
 
 console = Console()
 
-# Candidates prepared (researched and scored) per post before giving up
+# Candidates prepared (researched and assessed) per post before giving up
 MAX_ATTEMPTS = 5
-# Statuses a previous run may have left a candidate in, before it was scored
+# Statuses a previous run may have left a candidate in, before it was assessed
 _UNPREPARED = ["pending", "researched"]
 
 
@@ -48,7 +48,7 @@ async def _last_post(db_pool, dry_run: bool) -> tuple[str | None, str | None]:
 
 
 async def _next_unprepared(db_pool, tried: list[int], avoid_categories: list[str]) -> dict | None:
-    """Pick up a candidate an earlier run left unscored, otherwise select a new one.
+    """Pick up a candidate an earlier run left unassessed, otherwise select a new one.
 
     Candidates whose story type is not in `avoid_categories` are preferred.
     """
@@ -82,7 +82,7 @@ async def _skip(db_pool, candidate: dict, reason: object) -> None:
 
 
 async def _prepare(db_pool, candidate: dict) -> None:
-    """Research and score one candidate, leaving it 'scored' or 'skipped'.
+    """Research and assess one candidate, leaving it 'assessed' or 'skipped'.
 
     Safe to run for several candidates concurrently: each touches only its own rows.
     """
@@ -93,7 +93,7 @@ async def _prepare(db_pool, candidate: dict) -> None:
             "SELECT status FROM candidates WHERE id = $1", candidate["id"]
         )
         if status == "researched":
-            await score_candidate(db_pool, candidate["id"])
+            await assess_candidate(db_pool, candidate["id"])
     except (LLMRefusalError, ValueError) as exc:
         await _skip(db_pool, candidate, exc)
 
@@ -101,24 +101,22 @@ async def _prepare(db_pool, candidate: dict) -> None:
 async def _pick_ready(
     db_pool, dry_run: bool, avoid_region: str | None, last_category: str | None
 ) -> dict | None:
-    """Choose a scored candidate to post, applying the variety rule.
+    """Choose an assessed candidate to post, applying the variety rule.
 
-    Candidates in `avoid_region` are passed over (they stay 'scored' for a later run),
+    Candidates in `avoid_region` are passed over (they stay 'assessed' for a later run),
     and a different story type than the last post is preferred. A real run also
     considers 'approved' candidates: previewed by a dry run but never posted.
     """
     row = await db_pool.fetchrow(
         """
-        SELECT c.id, c.place_name, c.story_category,
-               (SELECT post_format FROM scores WHERE candidate_id = c.id
-                 ORDER BY scored_at DESC LIMIT 1) AS post_format
+        SELECT c.id, c.place_name, c.story_category, c.status
         FROM candidates c
         WHERE c.layer1_passed AND c.status = ANY($1::text[])
           AND ($2::text IS NULL OR c.region IS DISTINCT FROM $2)
         ORDER BY (c.story_category IS NOT DISTINCT FROM $3), c.created_at
         LIMIT 1
         """,
-        ["scored"] if dry_run else ["scored", "approved"],
+        ["assessed"] if dry_run else ["assessed", "approved"],
         avoid_region,
         last_category,
     )
@@ -126,18 +124,41 @@ async def _pick_ready(
 
 
 async def _publish(db_pool, candidate: dict, dry_run: bool) -> bool:
-    """Write and publish one ready candidate. Returns False if its content was unusable."""
-    try:
-        content = await run_content_generation(db_pool, candidate["id"], candidate["post_format"])
-    except (LLMRefusalError, ValueError) as exc:
-        await _skip(db_pool, candidate, exc)
-        return False
+    """Write and publish one ready candidate. Returns False if its content was unusable.
+
+    An 'approved' candidate was previewed by a dry run: the text that was previewed is
+    the text that gets posted, not a fresh draft nobody has seen.
+    """
+    content = await _previewed_content(db_pool, candidate) if not dry_run else None
+    if content is None:
+        try:
+            content = await run_content_generation(db_pool, candidate["id"])
+        except (LLMRefusalError, ValueError) as exc:
+            await _skip(db_pool, candidate, exc)
+            return False
     await run_publish(db_pool, candidate["id"], content, dry_run=dry_run)
+    posts = 1 + len(content["thread_parts"] or [])
     console.log(
-        f"[pipeline] {'Previewed' if dry_run else 'Posted'}:"
-        f" {candidate['place_name']} ({candidate['post_format']})"
+        f"[pipeline] {'Previewed' if dry_run else 'Posted'}: {candidate['place_name']}"
+        f" ({'single post' if posts == 1 else f'thread of {posts}'})"
     )
     return True
+
+
+async def _previewed_content(db_pool, candidate: dict) -> dict | None:
+    """The content a dry run stored for an 'approved' candidate, if any."""
+    if candidate["status"] != "approved":
+        return None
+    row = await db_pool.fetchrow(
+        """
+        SELECT post_text, thread_parts FROM posts
+        WHERE candidate_id = $1 AND dry_run
+        ORDER BY posted_at DESC, id DESC
+        LIMIT 1
+        """,
+        candidate["id"],
+    )
+    return dict(row) if row else None
 
 
 async def _post_one(db_pool, dry_run: bool, parallel: int) -> bool:
@@ -182,11 +203,11 @@ async def _post_one(db_pool, dry_run: bool, parallel: int) -> bool:
 
 
 async def run_once(posts: int = 1, parallel: int = 1) -> int:
-    """Execute a pipeline run: pick a candidate, research it, score it, generate content, publish.
+    """Execute a pipeline run: pick a candidate, research it, assess it, generate content, publish.
 
     Reads DRY_RUN and DATABASE_URL from env. Creates and tears down the asyncpg pool
     per run. `posts` > 1 repeats the cycle, which is useful for previewing several
-    posts in a dry run; `parallel` is how many candidates are researched and scored at
+    posts in a dry run; `parallel` is how many candidates are researched and assessed at
     the same time. Returns the number of posts produced.
     """
     load_dotenv()
@@ -207,7 +228,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--posts", type=int, default=1, help="number of posts to produce")
     parser.add_argument(
-        "--parallel", type=int, default=1, help="candidates to research and score at once"
+        "--parallel", type=int, default=1, help="candidates to research and assess at once"
     )
     args = parser.parse_args()
     raise SystemExit(0 if asyncio.run(run_once(args.posts, args.parallel)) else 1)

@@ -13,6 +13,7 @@ from rich.panel import Panel
 from pipeline.candidate_selector import _HEADERS
 from pipeline.image_sourcer import get_image_for_candidate
 from pipeline.preview import write_preview
+from pipeline.xtext import weighted_length
 
 console = Console()
 
@@ -24,6 +25,15 @@ def _images_enabled() -> bool:
     text-only by default.
     """
     return os.getenv("POST_IMAGES", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _source_link_enabled() -> bool:
+    """Whether the closing reply links to the Wikipedia article (SOURCE_LINK=true).
+
+    Off by default: X charges many times more for a post containing a link than for
+    a plain one, so the source is named in text instead.
+    """
+    return os.getenv("SOURCE_LINK", "false").strip().lower() in {"1", "true", "yes"}
 
 
 def _x_client() -> tweepy.Client:
@@ -57,11 +67,16 @@ async def post_to_x(
     If dry_run=True, logs the content but does not call the X API.
     Handles single post and thread (reply-chaining) cases. The image, if any, is
     attached to the first post.
+
+    If the first post fails, the error propagates and nothing was published. If a
+    later reply fails, the thread is left as far as it got and the first post's ID is
+    still returned: the hook is already public, and retrying the whole thread on the
+    next run would post it twice.
     """
     parts = [post_text, *(thread_parts or [])]
     if dry_run:
         for i, part in enumerate(parts, start=1):
-            title = f"DRY RUN — post {i}/{len(parts)} ({len(part)} chars)"
+            title = f"DRY RUN — post {i}/{len(parts)} ({weighted_length(part)} chars)"
             if i == 1 and image_url:
                 title += " + image"
             console.print(Panel(part, title=title, title_align="left"))
@@ -74,12 +89,21 @@ async def post_to_x(
     first_id: str | None = None
     reply_to: str | None = None
     for i, part in enumerate(parts):
-        response = await asyncio.to_thread(
-            client.create_tweet,
-            text=part,
-            media_ids=[media_id] if i == 0 and media_id else None,
-            in_reply_to_tweet_id=reply_to,
-        )
+        try:
+            response = await asyncio.to_thread(
+                client.create_tweet,
+                text=part,
+                media_ids=[media_id] if i == 0 and media_id else None,
+                in_reply_to_tweet_id=reply_to,
+            )
+        except tweepy.TweepyException as exc:
+            if first_id is None:
+                raise
+            console.log(
+                f"[publisher] Thread stopped at post {i + 1} of {len(parts)}: {exc!r}."
+                f" The first {i} are published."
+            )
+            break
         reply_to = str(response.data["id"])
         first_id = first_id or reply_to
     return first_id
@@ -148,7 +172,11 @@ def _footer(wikipedia_url: str, image: dict | None) -> str:
     The photo credit carries what a Creative Commons licence asks for: the author,
     the licence and a link to it, and a link to the source file.
     """
-    lines = [f"Source: {wikipedia_url}"]
+    if _source_link_enabled():
+        lines = [f"Source: {wikipedia_url}"]
+    else:
+        title = urllib.parse.unquote(wikipedia_url.rstrip("/").split("/wiki/")[-1])
+        lines = [f"Source: Wikipedia, “{title.replace('_', ' ')}”"]
     if image:
         license_part = " ".join(filter(None, [image["license"], image.get("license_url")]))
         lines.append(f"Photo: {image['credit']}, {license_part}, via Wikimedia Commons")

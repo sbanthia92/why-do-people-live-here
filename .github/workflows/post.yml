@@ -31,6 +31,9 @@ jobs:
       # Wikimedia asks for a real contact (email or URL) in the User-Agent.
       # Set the WIKIMEDIA_CONTACT repository variable; the repo URL is the fallback.
       WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT || format('https://github.com/{0}', github.repository) }})
+      # "true" adds a link to the Wikipedia article in the closing reply. X charges far
+      # more for a post containing a link, so the source is named in text by default.
+      SOURCE_LINK: ${{ vars.SOURCE_LINK }}
       POSTS: ${{ inputs.posts || 1 }}
       PREVIEW_DIR: previews
 
@@ -39,6 +42,8 @@ jobs:
 
       - name: Decide what to run
         id: mode
+        env:
+          HAS_X_KEYS: ${{ secrets.X_API_KEY != '' && secrets.X_API_SECRET != '' && secrets.X_ACCESS_TOKEN != '' && secrets.X_ACCESS_SECRET != '' }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::warning::The ANTHROPIC_API_KEY secret is not set, so there is nothing to run. Add it under Settings → Secrets and variables → Actions."
@@ -50,6 +55,10 @@ jobs:
           if [ "$PUBLISH_TO_X" = "true" ]; then
             if [ -z "$DATABASE_URL" ]; then
               echo "::error::PUBLISH_TO_X is on, but posting for real needs the DATABASE_URL secret (a hosted Postgres), so that posted places are remembered."
+              exit 1
+            fi
+            if [ "$HAS_X_KEYS" != "true" ]; then
+              echo "::error::PUBLISH_TO_X is on, but one or more of the X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN and X_ACCESS_SECRET secrets is not set."
               exit 1
             fi
             echo "dry_run=false" >> "$GITHUB_OUTPUT"
@@ -88,7 +97,7 @@ jobs:
 
       - name: Run pipeline (preview, embedded database)
         if: steps.mode.outputs.database == 'embedded'
-        run: python scripts/dry_run.py --posts "$POSTS" --parallel 1
+        run: python scripts/run_local.py --posts "$POSTS" --parallel 1
 
       # --- Hosted database: preview or real posting ----------------------------------
       - name: Apply DB schema

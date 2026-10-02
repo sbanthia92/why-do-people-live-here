@@ -14,13 +14,13 @@ import pytest
 pgserver = pytest.importorskip("pgserver")
 
 from db.client import _init_connection
-from pipeline.content_generator import SinglePost, Thread
+from pipeline.assessor import Assessment
+from pipeline.content_generator import Posts
 from pipeline.researcher import ResearchSummary
-from pipeline.scorer import DIMENSIONS, Scores
 from scheduler.run_pipeline import run_once
 
 _SCHEMA = (Path(__file__).parent.parent / "db" / "schema.sql").read_text()
-_TABLES = "variety_log, posts, scores, research, candidates"
+_TABLES = "variety_log, posts, assessments, research, candidates"
 
 
 @pytest.fixture(scope="module")
@@ -46,10 +46,11 @@ async def db(database_url, monkeypatch):
 class FakeWorld:
     """Stand-ins for everything outside the database."""
 
-    def __init__(self, seed: dict, regions: dict[str, str], low_scoring: tuple[str, ...] = ()):
+    def __init__(self, seed: dict, regions: dict[str, str], no_angle: tuple[str, ...] = ()):
         self.seed = seed
         self.regions = regions
-        self.low_scoring = low_scoring
+        self.no_angle = no_angle
+        self.written: list[str] = []
         self.researched: list[str] = []
         self.posted: list[dict] = []
         self._in_flight = 0
@@ -65,12 +66,17 @@ class FakeWorld:
             await asyncio.sleep(0.05)
             self._in_flight -= 1
             return ResearchSummary(region=self.regions[place], summary=f"{place} brief [W][1].")
-        if output_format is Scores:
-            value = 0 if place in self.low_scoring else 2
-            return Scores(**dict.fromkeys(DIMENSIONS, value), justifications=dict.fromkeys(DIMENSIONS, "x"))
-        if output_format is Thread:
-            return Thread(tweets=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."])
-        return SinglePost(text=f"Why do people live in {place}?")
+        if output_format is Assessment:
+            return Assessment(
+                corroborated_reason="backed by [W][1]",
+                corroborated=True,
+                has_angle_reason="an ordinary town" if place in self.no_angle else "no road in",
+                has_angle=place not in self.no_angle,
+                writer_notes="Lead with the ferry.",
+            )
+        assert output_format is Posts
+        self.written.append(place)
+        return Posts(posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."])
 
     async def post_to_x(self, post_text, thread_parts, image_url, dry_run=False):
         self.posted.append({"text": post_text, "replies": thread_parts, "dry_run": dry_run})
@@ -114,11 +120,13 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert await run_once() == 1
 
         preview = (tmp_path / "0001-alpha-island.md").read_text()
-        assert preview.startswith("# Alpha Island — thread, 10/10\n")
+        assert preview.startswith("# Alpha Island — thread of 3\n")
         assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
         assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
-        assert "**4/4**" in preview and "> Source: https://en.wikipedia.org/wiki/Alpha_Island" in preview
-        assert "| named origin | 2/2 | x |" in preview
+        assert "**4/4**" in preview and "> Source: Wikipedia, “Alpha Island”" in preview
+        assert "- **Independently backed:** yes. backed by [W][1]" in preview
+        assert "story:** yes. no road in" in preview
+        assert "**Editor's notes to the writer:** Lead with the ferry." in preview
         assert "## Web sources (1)\n\n- [Example](https://example.org/a)" in preview
 
         post = await db.fetchrow("SELECT * FROM posts")
@@ -131,8 +139,8 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert candidate["region"] == "Oceania" and candidate["layer1_passed"] is True
         research = await db.fetchrow("SELECT * FROM research")
         assert research["web_sources"][0]["source_name"] == "Example"
-        score = await db.fetchrow("SELECT * FROM scores")
-        assert float(score["total_weighted"]) == 10.0 and score["post_format"] == "thread"
+        assessment = await db.fetchrow("SELECT * FROM assessments")
+        assert assessment["passed"] and assessment["writer_notes"] == "Lead with the ferry."
 
         # A second dry run has nothing new to preview
         assert await run_once() == 0
@@ -143,12 +151,13 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
     assert len(list(tmp_path.iterdir())) == 1  # real posts write no preview file
     assert await _statuses(db) == {"Alpha Island": "posted"}
     assert world.researched == ["Alpha Island"]  # the real run reused the stored research
+    assert world.written == ["Alpha Island"]  # ...and posted the previewed text, not a new draft
     real = await db.fetchrow("SELECT * FROM posts WHERE NOT dry_run")
     assert real["x_post_id"] == "x-2"
     log = await db.fetchrow("SELECT region, story_category FROM variety_log")
     assert tuple(log) == ("Oceania", "island_community")
     # The closing reply carries the source link
-    assert world.posted[-1]["replies"][-1] == "Source: https://en.wikipedia.org/wiki/Alpha_Island"
+    assert world.posted[-1]["replies"][-1] == "Source: Wikipedia, “Alpha Island”"
 
 
 async def test_variety_rotates_story_category(db):
@@ -230,7 +239,7 @@ async def test_same_region_candidate_is_deferred_not_wasted(db):
         # Beta shares Alpha's region, so it was prepared, parked, and Gamma went out
         assert await _statuses(db) == {
             "Alpha Island": "posted",
-            "Beta Island": "scored",
+            "Beta Island": "assessed",
             "Gamma Island": "posted",
         }
         assert await run_once() == 1
@@ -241,15 +250,16 @@ async def test_same_region_candidate_is_deferred_not_wasted(db):
     assert regions_logged == ["Oceania", "Europe", "Oceania"]
 
 
-async def test_low_scoring_candidate_is_skipped_and_next_one_posts(db):
+async def test_candidate_failing_a_gate_is_skipped_and_next_one_posts(db):
     seed = {"island_community": {"places": ["Dull Island", "Alpha Island"]}}
     regions = {"Dull Island": "Asia", "Alpha Island": "Oceania"}
 
-    with FakeWorld(seed, regions, low_scoring=("Dull Island",)) as world:
+    with FakeWorld(seed, regions, no_angle=("Dull Island",)) as world:
         assert await run_once() == 1
         # Nothing left: the skipped candidate is never retried
         assert await run_once() == 0
 
     assert await _statuses(db) == {"Dull Island": "skipped", "Alpha Island": "posted"}
     assert len(world.posted) == 1
-    assert await db.fetchval("SELECT post_format FROM scores ORDER BY id LIMIT 1") == "skip"
+    assert await db.fetchval("SELECT passed FROM assessments ORDER BY id LIMIT 1") is False
+    assert world.written == ["Alpha Island"]  # nothing was written for the skipped place

@@ -1,4 +1,4 @@
-"""Tests for pipeline.image_sourcer and the photo credit line."""
+"""Tests for pipeline.publisher and pipeline.image_sourcer."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -92,7 +92,16 @@ async def test_images_are_off_unless_enabled(monkeypatch, setting, expect_lookup
     assert lookup.await_count == (1 if expect_lookup else 0)
 
 
-def test_footer_credits_author_licence_and_source():
+def test_footer_names_the_source_without_a_link_by_default(monkeypatch):
+    """A post containing a link costs far more on X, so the link is opt-in."""
+    monkeypatch.delenv("SOURCE_LINK", raising=False)
+    encoded = "https://en.wikipedia.org/wiki/Shell%2C_Ecuador"
+    assert _footer(encoded, None) == "Source: Wikipedia, “Shell, Ecuador”"
+    assert "http" not in _footer(_URL, None)
+
+
+def test_footer_credits_author_licence_and_source(monkeypatch):
+    monkeypatch.setenv("SOURCE_LINK", "true")
     image = {
         "credit": "Jo Bloggs",
         "license": "CC BY-SA 4.0",
@@ -106,3 +115,39 @@ def test_footer_credits_author_licence_and_source():
         "https://commons.wikimedia.org/wiki/File:Testville.jpg"
     )
     assert _footer(_URL, None) == "Source: https://en.wikipedia.org/wiki/Testville"
+
+
+async def test_thread_failure_after_first_post_keeps_what_was_published():
+    """A reply that fails must not make the next run post the whole thread again."""
+    import tweepy
+
+    from pipeline.publisher import post_to_x
+
+    client = MagicMock()
+    client.create_tweet.side_effect = [
+        MagicMock(data={"id": 111}),
+        MagicMock(data={"id": 222}),
+        tweepy.TweepyException("rate limited"),
+    ]
+    with patch("pipeline.publisher._x_client", return_value=client):
+        first_id = await post_to_x("Hook.", ["2/ More.", "3/ End.", "Source"], None)
+
+    assert first_id == "111"
+    assert client.create_tweet.call_count == 3  # stopped at the failure
+    replies_to = [c.kwargs["in_reply_to_tweet_id"] for c in client.create_tweet.call_args_list]
+    assert replies_to == [None, "111", "222"]  # each post replies to the one before
+
+
+async def test_failure_on_first_post_raises():
+    """Nothing was published, so the run should fail and the candidate stay ready."""
+    import tweepy
+
+    from pipeline.publisher import post_to_x
+
+    client = MagicMock()
+    client.create_tweet.side_effect = tweepy.TweepyException("unauthorized")
+    with (
+        patch("pipeline.publisher._x_client", return_value=client),
+        pytest.raises(tweepy.TweepyException),
+    ):
+        await post_to_x("Hook.", None, None)

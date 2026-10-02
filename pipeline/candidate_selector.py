@@ -8,6 +8,7 @@ import asyncio
 import os
 import random
 import urllib.parse
+from collections.abc import Sequence
 from pathlib import Path
 
 import httpx
@@ -393,21 +394,23 @@ async def select_candidate(story_category: str, db_conn) -> dict | None:
     return None
 
 
-async def run_selector(db_conn, avoid_category: str | None = None) -> dict | None:
+async def run_selector(db_conn, avoid_categories: Sequence[str] = ()) -> dict | None:
     """Iterate story_categories in random order, return first passing candidate.
 
     Loads seed_categories.yaml, shuffles story_category keys, calls select_candidate
     for each until one returns a result.  Returns None if all categories are exhausted.
 
-    `avoid_category` (the story_category of the most recent post) is tried last, so
-    back-to-back posts only share a story type when nothing else is available.
+    `avoid_categories` are tried after all the others, in the order given — so pass
+    the one to avoid most (the story_category of the most recent post) last. A story
+    type is then only repeated when nothing else is available.
     """
     seed = _load_seed_categories()
     categories = list(seed.keys())
     random.shuffle(categories)
-    if avoid_category in categories:
-        categories.remove(avoid_category)
-        categories.append(avoid_category)
+    for avoided in dict.fromkeys(avoid_categories):
+        if avoided in categories:
+            categories.remove(avoided)
+            categories.append(avoided)
 
     for story_category in categories:
         console.log(f"[candidate_selector] Trying story_category: {story_category}")

@@ -37,7 +37,8 @@ _SINGLE_SYSTEM = (
     + f"""
 
 Write one post of at most {MAX_TWEET_CHARS} characters that stands entirely on its own. \
-Name the place and where it is, and answer the question: why do people live here?"""
+Open with the fact that makes living there seem unlikely, name the place and where it \
+is, and answer the question: why do people live here?"""
 )
 
 _THREAD_SYSTEM = (
@@ -45,11 +46,21 @@ _THREAD_SYSTEM = (
     + f"""
 
 Write a thread of {MIN_THREAD_PARTS} to {MAX_THREAD_PARTS} posts, each at most \
-{MAX_TWEET_CHARS} characters. The first post is the hook: name the place and where it \
-is, and set up the puzzle so that it makes sense with nothing after it. The posts that \
-follow answer it — how the place began, what keeps people there, and the details that \
-make it real — one idea per post. Start each post after the first with its number and \
-a slash, like "2/". End on the strongest fact, not on a summary."""
+{MAX_TWEET_CHARS} characters.
+
+The first post is the hook, and most readers see only this one. Open with the fact \
+that makes living there seem unlikely — not with coordinates, distances or a census \
+figure. Name the place and say where it is in a few words. End the post with the \
+question itself: "Why do people live here?", or "Why did people live here?" for an \
+abandoned place. It has to make sense with nothing after it.
+
+The posts that follow answer the question: how the place began, what keeps people \
+there, and the details that make it real — one idea per post. Start each with its \
+number and a slash, like "2/". End on the strongest fact, not on a summary.
+
+Length follows the material. {MIN_THREAD_PARTS} posts is a complete thread and the \
+usual length. Add a fourth or fifth only when it carries something a reader would be \
+sorry to miss; a post that repeats, pads or lists minor facts weakens the thread."""
 )
 
 

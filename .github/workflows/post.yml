@@ -5,46 +5,127 @@ on:
     - cron: "0 9 * * *"   # 09:00 UTC daily
   workflow_dispatch:        # allow manual trigger
     inputs:
-      dry_run:
-        description: "Preview only — generate the post but do not publish to X"
-        type: boolean
-        default: false
+      posts:
+        description: "Number of posts to produce"
+        type: number
+        default: 1
 
 # Never let two runs pick the same candidate
 concurrency: daily-post
+
+permissions:
+  contents: read
+  issues: write   # previews are filed as issues
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
 
     env:
-      # A hosted Postgres that persists between runs. Dedup and variety tracking live
-      # there, so a throwaway service container would reset them every day.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # Optional until posting for real: a hosted Postgres that persists between runs
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Set the PUBLISH_TO_X repository variable to "true" to post for real.
+      # Anything else means preview mode: nothing is sent to X.
+      PUBLISH_TO_X: ${{ vars.PUBLISH_TO_X }}
+      # Wikimedia asks for a real contact (email or URL) in the User-Agent.
+      # Set the WIKIMEDIA_CONTACT repository variable; the repo URL is the fallback.
+      WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT || format('https://github.com/{0}', github.repository) }})
+      POSTS: ${{ inputs.posts || 1 }}
+      PREVIEW_DIR: previews
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Decide what to run
+        id: mode
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::The ANTHROPIC_API_KEY secret is not set, so there is nothing to run. Add it under Settings → Secrets and variables → Actions."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+          if [ "$PUBLISH_TO_X" = "true" ]; then
+            if [ -z "$DATABASE_URL" ]; then
+              echo "::error::PUBLISH_TO_X is on, but posting for real needs the DATABASE_URL secret (a hosted Postgres), so that posted places are remembered."
+              exit 1
+            fi
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ -z "$DATABASE_URL" ]; then
+            echo "database=embedded" >> "$GITHUB_OUTPUT"
+          else
+            echo "database=hosted" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python 3.11
+        if: steps.mode.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
-        run: pip install .
+        if: steps.mode.outputs.run == 'true'
+        run: pip install . ${{ steps.mode.outputs.database == 'embedded' && 'pgserver' || '' }}
 
+      # --- Preview mode without a hosted database -----------------------------------
+      # The embedded Postgres data directory is carried between runs by the cache, so
+      # places already previewed are not picked again. A cache is best-effort: if it is
+      # ever evicted, previews simply start over.
+      - name: Restore preview database
+        if: steps.mode.outputs.database == 'embedded'
+        uses: actions/cache@v4
+        with:
+          path: .dryrun-pg
+          key: preview-db-${{ github.run_id }}
+          restore-keys: preview-db-
+
+      - name: Run pipeline (preview, embedded database)
+        if: steps.mode.outputs.database == 'embedded'
+        run: python scripts/dry_run.py --posts "$POSTS" --parallel 1
+
+      # --- Hosted database: preview or real posting ----------------------------------
       - name: Apply DB schema
+        if: steps.mode.outputs.database == 'hosted'
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
 
-      - name: Run pipeline
-        run: python -m scheduler.run_pipeline
+      - name: Run pipeline (hosted database)
+        if: steps.mode.outputs.database == 'hosted'
+        run: python -m scheduler.run_pipeline --posts "$POSTS"
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          # Wikimedia asks for a real contact (email or URL) in the User-Agent.
-          # Set the WIKIMEDIA_CONTACT repository variable.
-          WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT }})
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+
+      # --- Notify ---------------------------------------------------------------------
+      # Each preview becomes an issue assigned to the repository owner, which GitHub
+      # emails to them, and is also shown on the run's summary page.
+      - name: File previews as issues
+        if: always() && steps.mode.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=("$PREVIEW_DIR"/*.md)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No previews were written." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh label create preview --color 0E8A16 --description "Dry-run post preview" --force
+          for file in "${files[@]}"; do
+            cat "$file" >> "$GITHUB_STEP_SUMMARY"
+            title="$(head -n 1 "$file" | sed 's/^# //')"
+            gh issue create \
+              --title "Preview: $title" \
+              --body-file "$file" \
+              --label preview \
+              --assignee "${{ github.repository_owner }}"
+          done

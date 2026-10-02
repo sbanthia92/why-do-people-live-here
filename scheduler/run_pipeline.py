@@ -47,26 +47,29 @@ async def _last_post(db_pool, dry_run: bool) -> tuple[str | None, str | None]:
     return (row["region"], row["story_category"]) if row else (None, None)
 
 
-async def _next_unprepared(db_pool, tried: list[int], last_category: str | None) -> dict | None:
+async def _next_unprepared(db_pool, tried: list[int], avoid_categories: list[str]) -> dict | None:
     """Pick up a candidate an earlier run left unscored, otherwise select a new one.
 
-    Candidates of a different story type than the last post are preferred.
+    Candidates whose story type is not in `avoid_categories` are preferred.
     """
     row = await db_pool.fetchrow(
         """
         SELECT id, place_name, story_category, status
         FROM candidates
         WHERE layer1_passed AND status = ANY($1::text[]) AND id <> ALL($2::int[])
-        ORDER BY (story_category IS NOT DISTINCT FROM $3), created_at
+        ORDER BY (story_category = ANY($3::text[])), created_at
         LIMIT 1
         """,
         _UNPREPARED,
         tried,
-        last_category,
+        avoid_categories,
     )
-    if row:
+    if row and row["story_category"] not in avoid_categories:
         return dict(row)
-    return await run_selector(db_pool, avoid_category=last_category)
+    # Only avoided story types are left unfinished: a new one from elsewhere is better
+    return await run_selector(db_pool, avoid_categories=avoid_categories) or (
+        dict(row) if row else None
+    )
 
 
 async def _skip(db_pool, candidate: dict, reason: object) -> None:
@@ -154,7 +157,12 @@ async def _post_one(db_pool, dry_run: bool, parallel: int) -> bool:
 
         batch: list[dict] = []
         for _ in range(min(parallel, MAX_ATTEMPTS - len(tried))):
-            candidate = await _next_unprepared(db_pool, tried, last_category)
+            # Spread a batch across story types, so the posts that follow can alternate.
+            # The last post's type goes at the end of the list: it is avoided hardest.
+            avoid = [c["story_category"] for c in batch]
+            if last_category:
+                avoid.append(last_category)
+            candidate = await _next_unprepared(db_pool, tried, avoid)
             if candidate is None:
                 break
             tried.append(candidate["id"])

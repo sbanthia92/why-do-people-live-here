@@ -489,9 +489,14 @@ async def test_run_selector_tries_avoided_category_last():
     ):
         for _ in range(10):  # order is otherwise random
             tried.clear()
-            await run_selector(AsyncMock(), avoid_category="exclave")
+            await run_selector(AsyncMock(), avoid_categories=["exclave"])
             assert tried[-1] == "exclave"
             assert sorted(tried) == ["exclave", "ghost_town", "isolated"]
+
+        # Several avoided categories keep their given order, after everything else
+        tried.clear()
+        await run_selector(AsyncMock(), avoid_categories=["isolated", "exclave"])
+        assert tried == ["ghost_town", "isolated", "exclave"]
 
 
 def test_seed_config_shape():

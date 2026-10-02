@@ -45,9 +45,11 @@ Each candidate carries a status (`pending → researched → assessed → approv
 
 X's API is pay-per-use: you buy credits and each request draws on them. At the time of writing a plain post costs $0.015 and a post containing a link costs $0.20, so a four-post thread plus the source reply is about $0.08 a day. Check [X's pricing page](https://docs.x.com/x-api/getting-started/pricing) for current rates.
 
-1. In the X developer console, create an app for the account that will post, give it **Read and Write** permission, and buy credits.
-2. Generate the API key and secret, then the access token and secret. Generate the access token *after* setting Read and Write; a token made earlier stays read-only.
-3. Put the four values in `.env` as `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET`.
+1. In the X developer console, open your app, set **Read and write** in its user authentication settings (type: Web App, Automated App or Bot; any callback URL), and buy credits.
+2. Generate the API key and secret, and put them in `.env` as `X_API_KEY` and `X_API_SECRET`.
+3. Get an access token for the account that should post:
+   - **Posting from the developer account itself:** generate the access token and secret on the same page (after step 1, or they stay read-only) and put them in `.env` as `X_ACCESS_TOKEN` and `X_ACCESS_SECRET`.
+   - **Posting from a different account:** run `python scripts/x_authorize.py`, open the link it prints while logged in as that account, authorize, and type the PIN back in. It saves that account's token to `.env` without showing it.
 4. Check them without posting anything: `python scripts/x_check.py`. It prints the account the posts would go out as.
 5. Post one for real: `python scripts/run_local.py --publish`. It asks for confirmation first, and publishes places you have already previewed before preparing new ones.
 

@@ -7,3 +7,6 @@ build/
 .venv/
 venv/
 *.log
+
+# Embedded Postgres data for scripts/dry_run.py
+.dryrun-pg/

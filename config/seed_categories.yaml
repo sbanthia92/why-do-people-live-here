@@ -1,29 +1,255 @@
+# Candidate sources per story_category.
+#
+#   categories: Wikipedia category slugs. Crawled one subcategory level deep.
+#               Use these where Wikipedia's categories line up with the story type.
+#   places:     Hand-picked English Wikipedia article titles (exact, post-redirect).
+#               Use these where no good category exists (Wikipedia groups places by
+#               location, not by remoteness or story).
+#
+# Every entry goes through the same layer 1 filter, dedup and scoring either way.
+# After editing `places`, run:  python scripts/verify_seed_places.py
+
 ghost_town:
-  - Ghost_towns_in_the_United_States
-  - Ghost_towns_in_Canada
-  - Ghost_towns_in_Australia
-  - Mining_communities
+  categories:
+    - Ghost_towns_in_the_United_States
+    - Ghost_towns_in_Canada
+    - Ghost_towns_in_Australia
+    - Mining_communities
 
 company_town:
-  - Company_towns
-  - Single-industry_towns
+  categories:
+    - Company_towns
 
 colonial_resettlement:
-  - Populated_places_established_by_colonial_governments
+  places:
+    - Grise Fiord
+    - Resolute, Nunavut
+    - Rabi Island
+    - Birobidzhan
+    - Colonia Tovar
+    - Pozuzo
+    - Nueva Germania
+    - New Australia
+    - Y Wladfa
+    - Trevelin
+    - Filadelfia
+    - Loma Plata
+    - Americana, São Paulo
+    - Freetown
+    - Birchtown, Nova Scotia
+    - Africville
+    - Port Arthur, Tasmania
+    - Saint-Laurent-du-Maroni
+    - Robben Island
+    - Spinalonga
+    - Culion
+    - Kili Island
+    - Rongelap Atoll
+    - Isle de Jean Charles, Louisiana
+    - Komsomolsk-on-Amur
+    - Magadan
+    - Karaganda
+    - Igarka
+    - Yeruham
+    - Da Lat
+    - Cameron Highlands
+    - Fraser's Hill
+    - Spanish Lookout
+    - Villa General Belgrano
+    - Nueva Helvecia
+    - Esperanza, Santa Fe
+    - Sosúa
+    - New Harmony, Indiana
+    - Amana Colonies
+    - Auroville
+    - Degania Alef
+    - Nain, Newfoundland and Labrador
+    - Hopedale, Newfoundland and Labrador
+    - Hebron, Newfoundland and Labrador
+    - Stanley, Falkland Islands
+    - Baikonur
 
 extreme_climate:
-  - Northernmost_settlements
-  - Southernmost_settlements
-  - Permafrost_communities
+  places:
+    - Oymyakon
+    - Verkhoyansk
+    - Yakutsk
+    - Norilsk
+    - Vorkuta
+    - Longyearbyen
+    - Ny-Ålesund
+    - Barentsburg
+    - Pyramiden
+    - Utqiagvik, Alaska
+    - Alert, Nunavut
+    - Eureka, Nunavut
+    - Qaanaaq
+    - Ittoqqortoormiit
+    - Kaktovik, Alaska
+    - Pevek
+    - Tiksi
+    - Bilibino
+    - Kiruna
+    - Vardø (town)
+    - Hammerfest
+    - Coober Pedy
+    - Marble Bar, Western Australia
+    - Dallol (ghost town)
+    - Furnace Creek, California
+    - Wadi Halfa
+    - La Rinconada, Peru
+    - El Alto
+    - Potosí
+    - Leadville, Colorado
+    - Puerto Williams
+    - Ushuaia
+    - Villa Las Estrellas
+    - McMurdo Station
+    - Amundsen–Scott South Pole Station
+    - Vostok Station
+    - Arica
+    - Ghadames
+    - Siwa Oasis
+    - Chinguetti
+    - Tuktoyaktuk
+    - Inuvik
+    - Churchill, Manitoba
+    - Nome, Alaska
+    - Point Hope, Alaska
+    - Kivalina, Alaska
+    - Dras
+    - Cherrapunji
+    - Debundscha
 
 island_community:
-  - Inhabited_islands
-  - Remote_islands
+  places:
+    - Tristan da Cunha
+    - Pitcairn Islands
+    - Saint Helena
+    - Ascension Island
+    - Easter Island
+    - Foula
+    - Fair Isle
+    - St Kilda, Scotland
+    - Out Skerries
+    - Rùm
+    - Lord Howe Island
+    - Norfolk Island
+    - Chatham Islands
+    - Rapa Iti
+    - Tokelau
+    - Niue
+    - Funafuti
+    - Christmas Island
+    - Cocos (Keeling) Islands
+    - Kerguelen Islands
+    - Tangier, Virginia
+    - Smith Island, Maryland
+    - Monhegan, Maine
+    - Matinicus Isle, Maine
+    - Heligoland
+    - Runde
+    - Grímsey
+    - Heimaey
+    - Mykines, Faroe Islands
+    - Tory Island
+    - Great Blasket Island
+    - Sark
+    - Linosa
+    - Alicudi
+    - Gavdos
+    - Chichijima
+    - Aogashima
+    - Yonaguni
+    - Minamidaitō, Okinawa
+    - Ulleungdo
+    - Mer Island, Queensland
+    - Robinson Crusoe Island
+    - Floreana Island
+    - Fernando de Noronha
+    - Taquile Island
+    - Ko Panyi
+    - Santa Cruz del Islote
+    - Ontong Java Atoll
+    - Tikopia
+    - Anuta
+    - Palmerston Island
+    - Pukapuka
+    - Diego Garcia
+    - Little Diomede Island
+    - Ebeye Island
+    - Hashima Island
 
 isolated:
-  - Fly-in_communities
-  - Road-inaccessible_communities
+  categories:
+    - Road-inaccessible_communities
+  places:
+    - Supai, Arizona
+    - Whittier, Alaska
+    - Stehekin, Washington
+    - Iquitos
+    - Juneau, Alaska
+    - Cordova, Alaska
+    - Bettles, Alaska
+    - Arctic Village, Alaska
+    - Anaktuvuk Pass, Alaska
+    - Yakutat, Alaska
+    - Old Crow, Yukon
+    - Fort Chipewyan
+    - Moosonee
+    - Attawapiskat First Nation
+    - Black Tickle
+    - Knoydart
+    - Giethoorn
+    - Mackinac Island, Michigan
+    - Shimshal
+    - Mêdog County
+    - Tasiilaq
+    - Monowi, Nebraska
+    - Cabo Polonio
+    - Phugtal Monastery
 
 exclave:
-  - Exclaves
-  - Enclaves
+  places:
+    - Llívia
+    - Büsingen am Hochrhein
+    - Campione d'Italia
+    - Jungholz
+    - Kleinwalsertal
+    - Samnaun
+    - Livigno
+    - Point Roberts, Washington
+    - Northwest Angle
+    - Hyder, Alaska
+    - Derby Line, Vermont
+    - Stanstead, Quebec
+    - Kentucky Bend
+    - Kaliningrad Oblast
+    - Nakhchivan Autonomous Republic
+    - Cabinda Province
+    - Oecusse
+    - Musandam Governorate
+    - Madha
+    - Nahwa
+    - Ceuta
+    - Melilla
+    - Peñón de Vélez de la Gomera
+    - Gibraltar
+    - Akrotiri and Dhekelia
+    - Sankovo-Medvezhye
+    - Sokh District
+    - Vorukh
+    - Shohimardon
+    - Dahagram–Angarpota
+    - Mount Athos
+    - Valga, Estonia
+    - Valka
+    - Narva
+    - Ivangorod
+    - Gorizia
+    - Nova Gorica
+    - Neum
+    - Neutral Moresnet
+    - Brčko District
+    - Saint Pierre and Miquelon
+    - Guantanamo Bay Naval Base

@@ -4,25 +4,23 @@ on:
   schedule:
     - cron: "0 9 * * *"   # 09:00 UTC daily
   workflow_dispatch:        # allow manual trigger
+    inputs:
+      dry_run:
+        description: "Preview only — generate the post but do not publish to X"
+        type: boolean
+        default: false
+
+# Never let two runs pick the same candidate
+concurrency: daily-post
 
 jobs:
   run-pipeline:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: user
-          POSTGRES_PASSWORD: password
-          POSTGRES_DB: wdplh
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+    env:
+      # A hosted Postgres that persists between runs. Dedup and variety tracking live
+      # there, so a throwaway service container would reset them every day.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4
@@ -36,9 +34,7 @@ jobs:
         run: pip install .
 
       - name: Apply DB schema
-        run: psql $DATABASE_URL -f db/schema.sql
-        env:
-          DATABASE_URL: postgresql://user:password@localhost:5432/wdplh
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
 
       - name: Run pipeline
         run: python -m scheduler.run_pipeline
@@ -48,7 +44,7 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (contact@example.com)
-          DATABASE_URL: postgresql://user:password@localhost:5432/wdplh
-          DRY_RUN: "false"
+          # Wikimedia asks for a real contact (email or URL) in the User-Agent.
+          # Set the WIKIMEDIA_CONTACT repository variable.
+          WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT }})
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}

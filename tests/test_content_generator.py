@@ -1,100 +1,84 @@
-"""Tests for pipeline.content_generator."""
+"""Tests for pipeline.content_generator and X post length."""
 
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from pipeline.content_generator import (
-    MAX_TWEET_CHARS,
-    SinglePost,
-    Thread,
-    generate_single_post,
-    generate_thread,
-    run_content_generation,
-)
+from pipeline.content_generator import MAX_POSTS, Posts, generate_posts, run_content_generation
+from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
-_ARGS = ("Testville", "Research brief [W].", {"named_origin": "founded 1900"})
+_ARGS = ("Testville", "Research brief [W].", "Lead with the ferry.")
 
 
-def _parse(*results) -> AsyncMock:
-    return AsyncMock(side_effect=list(results))
+def _parse(*drafts: list[str]) -> AsyncMock:
+    return AsyncMock(side_effect=[Posts(posts=d) for d in drafts])
 
 
-@pytest.mark.asyncio
-async def test_generate_single_post_within_char_limit() -> None:
-    """generate_single_post output must be ≤280 characters."""
-    parse = _parse(SinglePost(text="x" * 300), SinglePost(text="y" * 280))
+async def test_writer_chooses_single_post_or_thread() -> None:
+    """Whatever length the writer returns, within limits, is used as-is."""
+    thread = ["Hook about Testville.", "2/ Origin.", "3/ Economy."]
+    with patch("pipeline.content_generator.llm.parse", new=_parse(["One post."], thread)):
+        assert await generate_posts(*_ARGS) == ["One post."]
+        assert await generate_posts(*_ARGS) == thread
+
+
+async def test_over_long_post_is_sent_back_once() -> None:
+    parse = _parse(["x" * 300], ["y" * 280])
     with patch("pipeline.content_generator.llm.parse", new=parse):
-        text = await generate_single_post(*_ARGS)
+        posts = await generate_posts(*_ARGS)
 
-    assert len(text) <= MAX_TWEET_CHARS
-    assert parse.await_count == 2  # the over-long first draft triggered one rewrite
-    assert "300 characters" in parse.call_args_list[1].kwargs["user"]
+    assert weighted_length(posts[0]) <= MAX_POST_LENGTH
+    assert parse.await_count == 2
+    assert "posts [1] were over 280 characters" in parse.call_args_list[1].kwargs["user"]
 
 
-@pytest.mark.asyncio
-async def test_generate_single_post_raises_if_still_too_long() -> None:
-    """Two over-long drafts in a row is an error, not a truncated post."""
-    parse = _parse(SinglePost(text="x" * 300), SinglePost(text="x" * 290))
+async def test_still_invalid_after_retry_raises() -> None:
+    """Two bad drafts in a row is an error, not a truncated post."""
+    too_many = ["post"] * (MAX_POSTS + 1)
     with (
-        patch("pipeline.content_generator.llm.parse", new=parse),
-        pytest.raises(ValueError, match="290 chars"),
+        patch("pipeline.content_generator.llm.parse", new=_parse(too_many, too_many)),
+        pytest.raises(ValueError, match=f"it had {MAX_POSTS + 1} posts"),
     ):
-        await generate_single_post(*_ARGS)
+        await generate_posts(*_ARGS)
 
-
-@pytest.mark.asyncio
-async def test_generate_thread_has_at_least_two_parts() -> None:
-    """generate_thread must return at least 2 tweet strings."""
-    tweets = ["Hook about Testville.", "2/ Origin.", "3/ Economy."]
-    with patch("pipeline.content_generator.llm.parse", new=_parse(Thread(tweets=tweets))):
-        result = await generate_thread(*_ARGS)
-
-    assert result == tweets
-    assert len(result) >= 2
-
-
-@pytest.mark.asyncio
-async def test_generate_thread_retries_on_bad_format() -> None:
-    """A thread with an over-long part or too few parts is sent back once for fixing."""
-    good = ["Hook.", "2/ Origin.", "3/ Economy."]
-    parse = _parse(Thread(tweets=["Hook.", "2/ " + "x" * 300, "3/ ok"]), Thread(tweets=good))
-    with patch("pipeline.content_generator.llm.parse", new=parse):
-        assert await generate_thread(*_ARGS) == good
-    assert "posts [2] were over" in parse.call_args_list[1].kwargs["user"]
-
-    parse = _parse(Thread(tweets=["Only one."]), Thread(tweets=["Still one."]))
     with (
-        patch("pipeline.content_generator.llm.parse", new=parse),
-        pytest.raises(ValueError, match="it had 1 posts"),
+        patch("pipeline.content_generator.llm.parse", new=_parse([], [])),
+        pytest.raises(ValueError, match="it had 0 posts"),
     ):
-        await generate_thread(*_ARGS)
+        await generate_posts(*_ARGS)
 
 
-@pytest.mark.asyncio
-async def test_run_content_generation_dispatches_on_format() -> None:
-    """run_content_generation calls the correct generator for 'single' vs 'thread' format."""
+async def test_run_content_generation_shapes_single_and_thread() -> None:
     pool = AsyncMock()
     pool.fetchrow.return_value = {
         "place_name": "Testville",
         "raw_research": "Brief [W].",
-        "justifications": {"named_origin": "founded 1900"},
+        "writer_notes": "Lead with the ferry.",
     }
-    single = AsyncMock(return_value="One post.")
-    thread = AsyncMock(return_value=["Hook.", "2/ More.", "3/ End."])
+    generate = AsyncMock(side_effect=[["One post."], ["Hook.", "2/ More.", "3/ End."]])
 
-    with (
-        patch("pipeline.content_generator.generate_single_post", new=single),
-        patch("pipeline.content_generator.generate_thread", new=thread),
-    ):
-        assert await run_content_generation(pool, 1, "single") == {
+    with patch("pipeline.content_generator.generate_posts", new=generate):
+        assert await run_content_generation(pool, 1) == {
             "post_text": "One post.",
             "thread_parts": None,
         }
-        thread.assert_not_awaited()
-        assert await run_content_generation(pool, 1, "thread") == {
+        assert await run_content_generation(pool, 1) == {
             "post_text": "Hook.",
             "thread_parts": ["2/ More.", "3/ End."],
         }
-        with pytest.raises(ValueError):
-            await run_content_generation(pool, 1, "skip")
+    assert generate.call_args.args == ("Testville", "Brief [W].", "Lead with the ferry.")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Hello", 5),
+        ("−13.5 °C in Oymyakon", 21),  # the true minus sign (U+2212) counts double
+        ("“quoted” — dash", 15),  # curly quotes and em dash count once each
+        ("🙂", 2),  # emoji count double
+        ("東京", 4),  # CJK counts double
+        ("See https://en.wikipedia.org/wiki/A_very_long_article_title_indeed now", 31),
+    ],
+)
+def test_weighted_length_counts_like_x(text: str, expected: int) -> None:
+    assert weighted_length(text) == expected

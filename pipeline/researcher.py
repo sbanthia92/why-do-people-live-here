@@ -35,7 +35,7 @@ researchers are covering the rest. Report what each source says, citing it. If s
 disagree, say so. If you find little, say that plainly instead of padding."""
 
 # One search per aspect, run in parallel. Narrow questions return faster than one broad
-# one and between them cover more ground, which is what the corroboration score needs.
+# one and between them cover more ground, which is what the corroboration gate needs.
 _SEARCH_ASPECTS = {
     "origin": "How and why the place was founded: who, when, and for what reason.",
     "livelihood": (
@@ -49,7 +49,7 @@ _SEARCH_ASPECTS = {
 }
 
 _SYNTH_SYSTEM = """\
-You are preparing a research brief on a settlement. The brief feeds a scorer and then a \
+You are preparing a research brief on a settlement. The brief feeds an editor and then a \
 writer who may use only what is in it, so accuracy matters more than polish.
 
 Write a brief that answers: Why do people live here? Cover the founding (who, when, \
@@ -61,7 +61,7 @@ Rules:
 - Use only facts present in the provided sources. Add nothing from memory.
 - End every sentence with the tags of the sources that support it: [W] for the \
 Wikipedia article, [1], [2], ... for the numbered web sources. A claim backed by both \
-gets both tags, e.g. [W][2]. These tags are how the scorer judges corroboration.
+gets both tags, e.g. [W][2]. These tags are how the editor judges corroboration.
 - Where sources conflict, state both versions with their tags.
 - Leave out anything the sources do not support, even if it would make a better story."""
 
@@ -96,7 +96,7 @@ async def fetch_web_sources(place_name: str, story_category: str) -> list[dict]:
     Runs one focused search per aspect in _SEARCH_ASPECTS concurrently and merges the
     results. Returns a list of {url, snippet, source_name} dicts. Returns [] if web
     search is unavailable, so research can still proceed on the Wikipedia article alone
-    (the scorer will then mark corroboration down).
+    (the corroboration gate will then fail).
     """
 
     async def search(aspect: str, question: str) -> list[dict]:
@@ -132,7 +132,7 @@ async def synthesise_research(
 ) -> ResearchSummary:
     """Use Claude to synthesise a single research summary from all gathered sources.
 
-    Returns the region plus the research text that will be passed to the scorer.
+    Returns the region plus the research text that will be passed to the assessor.
     """
     web = "\n\n".join(
         f"[{i}] {s['source_name']} ({s['url']})\n{s['snippet']}"

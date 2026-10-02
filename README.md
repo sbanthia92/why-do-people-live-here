@@ -1,6 +1,6 @@
 # Why Do People Live Here?
 
-An automated X (Twitter) pipeline that researches obscure remote settlements and posts a daily "Why do people live here?" explainer. Each post is grounded in source-verified facts, filtered through a five-dimension story-worthiness scorer, and rotated across regions and settlement categories to keep the feed varied.
+An automated X (Twitter) pipeline that researches obscure remote settlements and posts a daily "Why do people live here?" explainer. Each post is grounded in source-verified facts, checked by two yes/no editorial gates, and rotated across regions and settlement categories to keep the feed varied.
 
 ## Getting started
 
@@ -10,9 +10,9 @@ An automated X (Twitter) pipeline that researches obscure remote settlements and
 4. Apply the schema: `psql $DATABASE_URL -f db/schema.sql`
 5. Preview posts without publishing: `python -m scheduler.run_pipeline --posts 3`
 
-Add `--parallel N` to research and score N places at the same time; the daily run uses 1.
+Add `--parallel N` to research and assess N places at the same time; the daily run uses 1.
 
-No Docker? `python scripts/dry_run.py --posts 3` does steps 3–5 in one go: it starts an embedded Postgres in `.dryrun-pg/`, applies the schema and previews posts. It only needs `ANTHROPIC_API_KEY` in `.env`.
+No Docker? `python scripts/run_local.py --posts 3` does steps 3–5 in one go: it starts an embedded Postgres in `.dryrun-pg/`, applies the schema and previews posts. It only needs `ANTHROPIC_API_KEY` in `.env`. Add `--publish` to post to X for real (see "Posting to X").
 
 6. Run the tests: `pytest` (the integration tests start their own embedded Postgres)
 
@@ -22,9 +22,9 @@ A dry run prints each post and stores it with the candidate marked `approved`. T
 
 1. **Candidate selection** — `config/seed_categories.yaml` gives each story category a source of place articles: Wikipedia categories to crawl (one subcategory level deep) and/or a hand-picked list of article titles, for story types Wikipedia's categories don't cover well. A cheap structural filter drops thin articles before any LLM call; crawled articles must also have coordinates, which keeps out films, lists and concept pages. After editing the hand-picked lists, run `python scripts/verify_seed_places.py` to check every title exists, isn't a redirect or duplicate, and passes the filter.
 2. **Research** — The full Wikipedia article plus passages Claude finds through three concurrent web searches (origin, livelihood, daily life) are synthesised into a research brief in which every claim is tagged with its sources. The place's region (continent) is recorded here.
-3. **Scoring** — Claude scores the brief 0–2 on five dimensions (named origin, economic engine, contrast/surprise, vivid detail, corroboration). Weights and thresholds live at the top of `pipeline/scorer.py`: a total of 8+ out of 10 becomes a thread, 5+ a single post, anything lower is skipped. Two rules override the total: a candidate with no independent corroboration is skipped, and one that scores 0 on contrast/surprise gets a single post at most.
-4. **Content generation** — Claude writes the post or thread from the brief alone. Length limits are checked in code, with one rewrite if a draft runs over.
-5. **Publishing** — Content is posted to X via the v2 API, followed by a reply linking the source article. Every step is recorded in Postgres.
+3. **Assessment** — Claude, acting as editor, answers two yes/no questions about the brief: is the central answer backed by a source independent of Wikipedia, and is there a real "why would anyone live there?" story with an answer. A place is posted only if both are yes. The reasons are recorded, along with notes for the writer.
+4. **Content generation** — Claude writes from the brief alone and decides the length: a single post, or a thread of up to four. Length is checked in code the way X counts it (links count as 23 characters; some symbols count double), with one rewrite if a draft runs over.
+5. **Publishing** — Content is posted to X via the v2 API, followed by a reply naming the source article. Every step is recorded in Postgres.
 
 ## Images
 
@@ -39,13 +39,30 @@ This is off by default because reuse on X is not risk-free: posting grants X a b
 
 ## Resuming
 
-Each candidate carries a status (`pending → researched → scored → approved/posted`, or `skipped`). A run that fails part-way leaves the candidate where it stopped, and the next run continues from there instead of redoing the work. Each run tries up to five candidates before giving up.
+Each candidate carries a status (`pending → researched → assessed → approved/posted`, or `skipped`). A run that fails part-way leaves the candidate where it stopped, and the next run continues from there instead of redoing the work. A place previewed by a dry run is `approved`; the next real run posts exactly the text that was previewed. Each run tries up to five candidates before giving up.
+
+## Posting to X
+
+X's API is pay-per-use: you buy credits and each request draws on them. At the time of writing a plain post costs $0.015 and a post containing a link costs $0.20, so a four-post thread plus the source reply is about $0.08 a day. Check [X's pricing page](https://docs.x.com/x-api/getting-started/pricing) for current rates.
+
+1. In the X developer console, create an app for the account that will post, give it **Read and Write** permission, and buy credits.
+2. Generate the API key and secret, then the access token and secret. Generate the access token *after* setting Read and Write; a token made earlier stays read-only.
+3. Put the four values in `.env` as `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN` and `X_ACCESS_SECRET`.
+4. Check them without posting anything: `python scripts/x_check.py`. It prints the account the posts would go out as.
+5. Post one for real: `python scripts/run_local.py --publish`. It asks for confirmation first, and publishes places you have already previewed before preparing new ones.
+
+Two settings affect cost and appearance, both off by default:
+
+- `SOURCE_LINK=true` makes the closing reply link to the Wikipedia article instead of naming it. That one post is then charged at the link rate.
+- `POST_IMAGES=true` attaches a photo (see "Images").
+
+If a thread fails part-way (a rate limit, say), the posts already published stay up and the place is recorded as posted, so the next run does not post the hook a second time.
 
 ## Deployment
 
 `.github/workflows/post.yml` runs the pipeline daily at 09:00 UTC, and can be triggered by hand. It has two modes.
 
-**Preview mode (the default).** Nothing is sent to X. Each post is filed as a GitHub issue labelled `preview` and assigned to the repository owner, so GitHub emails it to them; it also appears on the run's summary page. The issue shows every post with its character count, the scores with the reason for each, and the web sources used. This mode needs only:
+**Preview mode (the default).** Nothing is sent to X. Each post is filed as a GitHub issue labelled `preview` and assigned to the repository owner, so GitHub emails it to them; it also appears on the run's summary page. The issue shows every post with its character count, the editor's two yes/no verdicts with their reasons, and the web sources used. This mode needs only:
 
 - Secret: `ANTHROPIC_API_KEY`
 - Variable: `WIKIMEDIA_CONTACT` (an email or URL; Wikimedia asks for a contact in the User-Agent)

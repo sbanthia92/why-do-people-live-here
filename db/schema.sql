@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     region           TEXT,           -- continent or broad geographic area
     story_category   TEXT,           -- e.g. 'ghost_town', 'company_town', 'colonial_resettlement'
     status           TEXT NOT NULL DEFAULT 'pending',
-                                     -- pending | researched | scored | approved | posted | skipped
+                                     -- pending | researched | assessed | approved | posted | skipped
     layer1_passed    BOOLEAN,
     created_at       TIMESTAMPTZ DEFAULT now(),
     updated_at       TIMESTAMPTZ DEFAULT now()
@@ -18,22 +18,20 @@ CREATE TABLE IF NOT EXISTS research (
     candidate_id      INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
     wikipedia_extract TEXT,
     web_sources       JSONB,          -- array of {url, snippet, source_name}
-    raw_research      TEXT,           -- full synthesised research text passed to scorer
+    raw_research      TEXT,           -- full synthesised research text passed to the assessor
     researched_at     TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS scores (
-    id                SERIAL PRIMARY KEY,
-    candidate_id      INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
-    named_origin      INTEGER CHECK (named_origin BETWEEN 0 AND 2),
-    economic_engine   INTEGER CHECK (economic_engine BETWEEN 0 AND 2),
-    contrast_surprise INTEGER CHECK (contrast_surprise BETWEEN 0 AND 2),
-    vivid_detail      INTEGER CHECK (vivid_detail BETWEEN 0 AND 2),
-    corroboration     INTEGER CHECK (corroboration BETWEEN 0 AND 2),
-    total_weighted    NUMERIC(5,2),
-    justifications    JSONB,          -- {dimension: "reason string"}
-    post_format       TEXT,           -- 'single' | 'thread' | 'skip'
-    scored_at         TIMESTAMPTZ DEFAULT now()
+CREATE TABLE IF NOT EXISTS assessments (
+    id                  SERIAL PRIMARY KEY,
+    candidate_id        INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+    corroborated        BOOLEAN NOT NULL,   -- central answer backed by an independent source
+    corroborated_reason TEXT,
+    has_angle           BOOLEAN NOT NULL,   -- a real "why would anyone live there?" story
+    has_angle_reason    TEXT,
+    writer_notes        TEXT,               -- what the writer should build on or avoid
+    passed              BOOLEAN NOT NULL,   -- both gates yes
+    assessed_at         TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS posts (
@@ -54,3 +52,8 @@ CREATE TABLE IF NOT EXISTS variety_log (
     region         TEXT NOT NULL,
     story_category TEXT NOT NULL
 );
+
+-- Migration from the earlier 0-10 scoring, which the two yes/no gates replaced.
+-- Safe to re-run: candidates that passed the old scoring count as assessed.
+DROP TABLE IF EXISTS scores;
+UPDATE candidates SET status = 'assessed' WHERE status = 'scored';

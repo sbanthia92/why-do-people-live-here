@@ -14,11 +14,18 @@ def _yes_no(value: bool) -> str:
     return "yes" if value else "no"
 
 
-async def write_preview(db_pool, candidate_id: int, parts: list[str], directory: str) -> Path:
-    """Render one previewed post, with the editor's verdict and sources, to `directory`.
+async def write_preview(
+    db_pool,
+    candidate_id: int,
+    parts: list[str],
+    directory: str,
+    x_post_id: str | None = None,
+) -> Path:
+    """Render one post, with the editor's verdict and sources, to `directory`.
 
     `parts` is every post in order, including the closing source reply. The first
-    line of the file is a `# ` heading that doubles as a notification title.
+    line of the file is a `# ` heading that doubles as a notification title. Pass
+    `x_post_id` for a post that has gone out, and the file links to it on X.
     """
     row = await db_pool.fetchrow(
         """
@@ -45,6 +52,7 @@ async def write_preview(db_pool, candidate_id: int, parts: list[str], directory:
         "",
         f"{category} · {row['region'] or 'region unknown'} · [Wikipedia]({row['wikipedia_url']})",
         "",
+        *([f"**Posted to X:** https://x.com/i/status/{x_post_id}", ""] if x_post_id else []),
         "## Post",
         "",
     ]

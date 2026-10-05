@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- In publishing mode each post is filed as an issue labelled `posted`, linking to it on X.
+- Profile picture and banner for the X account in `assets/`, with the script that draws them.
 - Every run prints its Claude token use and an estimated cost.
 - State kept in the repository: the daily workflow loads the pipeline's memory from files on the `data` branch and commits it back after each run. No hosted database is needed, including for posting to X.
 - `scripts/run_local.py --shared` uses the same `data` branch from a local machine, and `--state-dir` uses any directory.
@@ -25,6 +27,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- The daily workflow runs at 14:17 UTC (was 09:17), which is daytime for audiences in the Americas, Europe and India.
 - Web search runs on Claude Sonnet 5.5 instead of Opus 5.5, roughly halving its price per token; the brief, gates and writing stay on Opus.
 - Web search blocks Wikipedia mirrors and derivatives (Kiddle, Grokipedia, Wikiwand and others), which would otherwise count as independent corroboration.
 - The daily workflow no longer uses the Actions cache or a `DATABASE_URL` secret, and runs at 09:17 UTC instead of on the hour.

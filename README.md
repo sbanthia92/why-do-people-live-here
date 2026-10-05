@@ -77,7 +77,7 @@ The saved state leaves out the full Wikipedia article text, which is only needed
 
 ## Deployment
 
-`.github/workflows/post.yml` runs the pipeline daily at 09:17 UTC, and can be triggered by hand. It has two modes.
+`.github/workflows/post.yml` runs the pipeline daily at 14:17 UTC, and can be triggered by hand. It has two modes.
 
 **Preview mode (the default).** Nothing is sent to X. Each post is filed as a GitHub issue labelled `preview` and assigned to the repository owner, so GitHub emails it to them; it also appears on the run's summary page. The issue shows every post with its character count, the editor's two yes/no verdicts with their reasons, and the web sources used. This mode needs only:
 
@@ -88,7 +88,7 @@ The saved state leaves out the full Wikipedia article text, which is only needed
 
 - Secrets: `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`
 
-In publishing mode, places that were previewed and not yet posted go out first, with the previewed text.
+In publishing mode, places that were previewed and not yet posted go out first, with the previewed text. Each published post is filed as an issue labelled `posted`, with a link to it on X, so the owner is still emailed about what went out.
 
 If `ANTHROPIC_API_KEY` is missing the run skips with a warning instead of failing. If the Anthropic account is out of credits, the run fails with a one-line explanation.
 

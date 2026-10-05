@@ -2,7 +2,9 @@ name: Daily post
 
 on:
   schedule:
-    - cron: "17 9 * * *"   # 09:17 UTC daily; off the hour, when scheduled runs queue longest
+    # 14:17 UTC daily: mid-morning in the Americas, afternoon in Europe, evening in
+    # India. Off the hour, because scheduled runs queue longest on the hour.
+    - cron: "17 14 * * *"
   workflow_dispatch:         # allow manual trigger
     inputs:
       posts:
@@ -57,6 +59,9 @@ jobs:
               exit 1
             fi
             echo "publish_flags=--publish --yes" >> "$GITHUB_OUTPUT"
+            echo "label=posted" >> "$GITHUB_OUTPUT"
+          else
+            echo "label=preview" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Python 3.11
@@ -112,26 +117,33 @@ jobs:
               commit --quiet -m "State after run ${GITHUB_RUN_ID}"
           git push origin HEAD:data
 
-      # Each preview becomes an issue assigned to the repository owner, which GitHub
-      # emails to them, and is also shown on the run's summary page.
-      - name: File previews as issues
+      # Each post, previewed or published, becomes an issue assigned to the repository
+      # owner, which GitHub emails to them, and is also shown on the run's summary page.
+      - name: File posts as issues
         if: always() && steps.mode.outputs.run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          LABEL: ${{ steps.mode.outputs.label }}
         run: |
           shopt -s nullglob
           files=("$PREVIEW_DIR"/*.md)
           if [ ${#files[@]} -eq 0 ]; then
-            echo "No previews were written." >> "$GITHUB_STEP_SUMMARY"
+            echo "No posts were produced." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          gh label create preview --color 0E8A16 --description "Dry-run post preview" --force
+          if [ "$LABEL" = "posted" ]; then
+            prefix="Posted"
+            gh label create posted --color 1D76DB --description "Published to X" --force
+          else
+            prefix="Preview"
+            gh label create preview --color 0E8A16 --description "Dry-run post preview" --force
+          fi
           for file in "${files[@]}"; do
             cat "$file" >> "$GITHUB_STEP_SUMMARY"
             title="$(head -n 1 "$file" | sed 's/^# //')"
             gh issue create \
-              --title "Preview: $title" \
+              --title "$prefix: $title" \
               --body-file "$file" \
-              --label preview \
+              --label "$LABEL" \
               --assignee "${{ github.repository_owner }}"
           done

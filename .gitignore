@@ -10,5 +10,7 @@ venv/
 
 # Embedded Postgres data for scripts/dry_run.py
 .dryrun-pg/
+# Checkout of the `data` branch used by scripts/run_local.py --shared
+.state/
 # Markdown previews written when PREVIEW_DIR is set
 previews/

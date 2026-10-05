@@ -108,6 +108,10 @@ async def fetch_web_sources(place_name: str, story_category: str) -> list[dict]:
         try:
             return await llm.web_search_citations(system=_SEARCH_SYSTEM, user=user)
         except anthropic.BadRequestError as exc:
+            # An empty credit balance also arrives as a 400. That isn't "search is
+            # unavailable": every later call would fail too, so stop here.
+            if "credit balance" in exc.message:
+                raise
             console.log(
                 f"[researcher] Web search ({aspect}) unavailable for {place_name}: {exc.message}"
             )

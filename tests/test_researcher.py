@@ -48,3 +48,20 @@ async def test_fetch_web_sources_survives_one_failed_search():
         sources = await fetch_web_sources("Testville", "island_community")
 
     assert [s["url"] for s in sources] == ["https://example.org/b"]
+
+
+async def test_fetch_web_sources_does_not_hide_an_empty_credit_balance():
+    """That 400 isn't "search unavailable": it has to stop the run, not thin the research."""
+    import pytest
+
+    out_of_credits = anthropic.BadRequestError(
+        "Your credit balance is too low to access the Anthropic API.",
+        response=MagicMock(status_code=400),
+        body=None,
+    )
+    search = AsyncMock(side_effect=out_of_credits)
+    with (
+        patch("pipeline.researcher.llm.web_search_citations", new=search),
+        pytest.raises(anthropic.BadRequestError, match="credit balance"),
+    ):
+        await fetch_web_sources("Testville", "island_community")

@@ -2,20 +2,20 @@ name: Daily post
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # 09:00 UTC daily
-  workflow_dispatch:        # allow manual trigger
+    - cron: "17 9 * * *"   # 09:17 UTC daily; off the hour, when scheduled runs queue longest
+  workflow_dispatch:         # allow manual trigger
     inputs:
       posts:
         description: "Number of posts to produce"
         type: number
         default: 1
 
-# Never let two runs pick the same candidate
+# Never let two runs pick the same candidate, or push state over each other
 concurrency: daily-post
 
 permissions:
-  contents: read
-  issues: write   # previews are filed as issues
+  contents: write   # the run commits its state to the `data` branch
+  issues: write     # previews are filed as issues
 
 jobs:
   run-pipeline:
@@ -23,8 +23,6 @@ jobs:
 
     env:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      # Optional until posting for real: a hosted Postgres that persists between runs
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # Set the PUBLISH_TO_X repository variable to "true" to post for real.
       # Anything else means preview mode: nothing is sent to X.
       PUBLISH_TO_X: ${{ vars.PUBLISH_TO_X }}
@@ -36,6 +34,7 @@ jobs:
       SOURCE_LINK: ${{ vars.SOURCE_LINK }}
       POSTS: ${{ inputs.posts || 1 }}
       PREVIEW_DIR: previews
+      STATE_DIR: state
 
     steps:
       - uses: actions/checkout@v4
@@ -53,23 +52,11 @@ jobs:
           echo "run=true" >> "$GITHUB_OUTPUT"
 
           if [ "$PUBLISH_TO_X" = "true" ]; then
-            if [ -z "$DATABASE_URL" ]; then
-              echo "::error::PUBLISH_TO_X is on, but posting for real needs the DATABASE_URL secret (a hosted Postgres), so that posted places are remembered."
-              exit 1
-            fi
             if [ "$HAS_X_KEYS" != "true" ]; then
               echo "::error::PUBLISH_TO_X is on, but one or more of the X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN and X_ACCESS_SECRET secrets is not set."
               exit 1
             fi
-            echo "dry_run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "dry_run=true" >> "$GITHUB_OUTPUT"
-          fi
-
-          if [ -z "$DATABASE_URL" ]; then
-            echo "database=embedded" >> "$GITHUB_OUTPUT"
-          else
-            echo "database=hosted" >> "$GITHUB_OUTPUT"
+            echo "publish_flags=--publish --yes" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Python 3.11
@@ -81,40 +68,50 @@ jobs:
 
       - name: Install dependencies
         if: steps.mode.outputs.run == 'true'
-        run: pip install . ${{ steps.mode.outputs.database == 'embedded' && 'pgserver' || '' }}
+        run: pip install . pgserver
 
-      # --- Preview mode without a hosted database -----------------------------------
-      # The embedded Postgres data directory is carried between runs by the cache, so
-      # places already previewed are not picked again. A cache is best-effort: if it is
-      # ever evicted, previews simply start over.
-      - name: Restore preview database
-        if: steps.mode.outputs.database == 'embedded'
-        uses: actions/cache@v4
-        with:
-          path: .dryrun-pg
-          key: preview-db-${{ github.run_id }}
-          restore-keys: preview-db-
+      # The pipeline's memory (what has been posted, rejected or queued) is kept as
+      # files on the `data` branch. Each run loads them into a throwaway database,
+      # does its work, and commits the result back.
+      - name: Check out state
+        if: steps.mode.outputs.run == 'true'
+        run: |
+          if git ls-remote --exit-code --heads origin data > /dev/null; then
+            git fetch --depth 1 origin data
+            git worktree add "$STATE_DIR" FETCH_HEAD
+          else
+            # First run: start an empty branch that shares no history with the code
+            git worktree add --detach "$STATE_DIR"
+            git -C "$STATE_DIR" checkout --orphan data
+            git -C "$STATE_DIR" rm -rf --quiet . || true
+          fi
 
-      - name: Run pipeline (preview, embedded database)
-        if: steps.mode.outputs.database == 'embedded'
-        run: python scripts/run_local.py --posts "$POSTS" --parallel 1
-
-      # --- Hosted database: preview or real posting ----------------------------------
-      - name: Apply DB schema
-        if: steps.mode.outputs.database == 'hosted'
-        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
-
-      - name: Run pipeline (hosted database)
-        if: steps.mode.outputs.database == 'hosted'
-        run: python -m scheduler.run_pipeline --posts "$POSTS"
+      - name: Run pipeline
+        if: steps.mode.outputs.run == 'true'
+        run: python scripts/run_local.py --state-dir "$STATE_DIR" --posts "$POSTS" --parallel 1 ${{ steps.mode.outputs.publish_flags }}
         env:
-          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
 
-      # --- Notify ---------------------------------------------------------------------
+      # Runs even if the pipeline failed: a post may have gone out before the error,
+      # and losing that record would mean posting the same place again.
+      - name: Save state
+        if: always() && steps.mode.outputs.run == 'true'
+        run: |
+          [ -d "$STATE_DIR" ] || exit 0
+          cd "$STATE_DIR"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "State unchanged."
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "State after run ${GITHUB_RUN_ID}"
+          git push origin HEAD:data
+
       # Each preview becomes an issue assigned to the repository owner, which GitHub
       # emails to them, and is also shown on the run's summary page.
       - name: File previews as issues

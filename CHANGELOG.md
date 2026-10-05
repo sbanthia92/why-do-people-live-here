@@ -6,6 +6,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- State kept in the repository: the daily workflow loads the pipeline's memory from files on the `data` branch and commits it back after each run. No hosted database is needed, including for posting to X.
+- `scripts/run_local.py --shared` uses the same `data` branch from a local machine, and `--state-dir` uses any directory.
 - `scripts/x_check.py` verifies X credentials without posting.
 - `SOURCE_LINK` setting: the closing reply names the source in text by default, because X charges far more for a post containing a link.
 - Post length is measured the way X counts it (links as 23 characters, some symbols double).
@@ -22,6 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- The daily workflow no longer uses the Actions cache or a `DATABASE_URL` secret, and runs at 09:17 UTC instead of on the hour.
 - The 0–10 score is replaced by two yes/no gates: independently corroborated, and a real "why would anyone live there?" story. The writer decides the length; threads are capped at four posts.
 - A place previewed by a dry run is posted with exactly the previewed text, not a fresh draft.
 - If a thread fails after its first post, the place is still recorded as posted so the hook is not published twice.
@@ -35,6 +38,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The daily workflow uses a persistent `DATABASE_URL` secret instead of a throwaway Postgres container, and takes the Wikimedia contact from a repository variable.
 
 ### Fixed
+- An empty Anthropic credit balance was logged as "web search unavailable" and then crashed with a traceback. It now stops the run with one clear line, and the state is still saved.
 - Wikipedia requests were rejected with HTTP 403 because no User-Agent was sent.
 - Article titles containing commas or parentheses were double-encoded and returned 404.
 - Rate-limited requests (HTTP 429) are retried after the delay Wikimedia asks for.

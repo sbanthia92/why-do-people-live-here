@@ -60,22 +60,32 @@ Two settings affect cost and appearance, both off by default:
 
 If a thread fails part-way (a rate limit, say), the posts already published stay up and the place is recorded as posted, so the next run does not post the hook a second time.
 
+## Where the pipeline keeps its memory
+
+The pipeline has to remember which places it has posted or rejected, what is queued, and the last post's region. That state lives in Postgres while a run is in progress; what differs is where it rests between runs.
+
+- **In the repository (the daily workflow).** The state is saved as JSON-lines files, one per table, committed to a branch called `data`. Each run loads them into a throwaway embedded Postgres, does its work, and commits the result back. Nothing to sign up for, nothing that expires, and `git log data` shows what happened each day.
+- **On your machine (the default for `scripts/run_local.py`).** An embedded Postgres in `.dryrun-pg/`. Delete the folder to start over.
+- **Shared between the two.** `python scripts/run_local.py --shared` fetches the `data` branch before the run and commits and pushes it afterwards, so a post published from your machine is known to the daily workflow and the other way round.
+- **A hosted Postgres**, if you prefer one: set `DATABASE_URL`, apply `db/schema.sql`, and run `python -m scheduler.run_pipeline`.
+
+The saved state leaves out the full Wikipedia article text, which is only needed while a place is being researched.
+
 ## Deployment
 
-`.github/workflows/post.yml` runs the pipeline daily at 09:00 UTC, and can be triggered by hand. It has two modes.
+`.github/workflows/post.yml` runs the pipeline daily at 09:17 UTC, and can be triggered by hand. It has two modes.
 
 **Preview mode (the default).** Nothing is sent to X. Each post is filed as a GitHub issue labelled `preview` and assigned to the repository owner, so GitHub emails it to them; it also appears on the run's summary page. The issue shows every post with its character count, the editor's two yes/no verdicts with their reasons, and the web sources used. This mode needs only:
 
 - Secret: `ANTHROPIC_API_KEY`
 - Variable: `WIKIMEDIA_CONTACT` (an email or URL; Wikimedia asks for a contact in the User-Agent)
 
-Without a `DATABASE_URL`, preview mode uses an embedded Postgres whose data is carried between runs by the Actions cache. That is best-effort: if the cache is evicted, previews start over.
-
 **Publishing mode.** Set the repository variable `PUBLISH_TO_X` to `true`. This also needs:
 
-- Secret: `DATABASE_URL` (a hosted Postgres that persists between runs, so posted places are remembered)
 - Secrets: `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`
 
-If `ANTHROPIC_API_KEY` is missing the run skips with a warning instead of failing.
+In publishing mode, places that were previewed and not yet posted go out first, with the previewed text.
+
+If `ANTHROPIC_API_KEY` is missing the run skips with a warning instead of failing. If the Anthropic account is out of credits, the run fails with a one-line explanation.
 
 `.github/workflows/ci.yml` runs ruff and the tests (Python 3.11 and 3.12) on every pull request and on pushes to `main`. It needs no secrets.

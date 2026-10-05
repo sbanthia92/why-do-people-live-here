@@ -21,7 +21,7 @@ A dry run prints each post and stores it with the candidate marked `approved`. T
 ## How it works
 
 1. **Candidate selection** — `config/seed_categories.yaml` gives each story category a source of place articles: Wikipedia categories to crawl (one subcategory level deep) and/or a hand-picked list of article titles, for story types Wikipedia's categories don't cover well. A cheap structural filter drops thin articles before any LLM call; crawled articles must also have coordinates, which keeps out films, lists and concept pages. After editing the hand-picked lists, run `python scripts/verify_seed_places.py` to check every title exists, isn't a redirect or duplicate, and passes the filter.
-2. **Research** — The full Wikipedia article plus passages Claude finds through three concurrent web searches (origin, livelihood, daily life) are synthesised into a research brief in which every claim is tagged with its sources. The place's region (continent) is recorded here.
+2. **Research** — The full Wikipedia article plus passages Claude finds through three concurrent web searches (origin, livelihood, daily life; run on Claude Sonnet, the cheaper model, with Wikipedia and its mirrors blocked) are synthesised into a research brief in which every claim is tagged with its sources. The place's region (continent) is recorded here.
 3. **Assessment** — Claude, acting as editor, answers two yes/no questions about the brief: is the central answer backed by a source independent of Wikipedia, and is there a real "why would anyone live there?" story with an answer. A place is posted only if both are yes. The reasons are recorded, along with notes for the writer.
 4. **Content generation** — Claude writes from the brief alone and decides the length: a single post, or a thread of up to four. Length is checked in code the way X counts it (links count as 23 characters; some symbols count double), with one rewrite if a draft runs over.
 5. **Publishing** — Content is posted to X via the v2 API, followed by a reply naming the source article. Every step is recorded in Postgres.
@@ -59,6 +59,10 @@ Two settings affect cost and appearance, both off by default:
 - `POST_IMAGES=true` attaches a photo (see "Images").
 
 If a thread fails part-way (a rate limit, say), the posts already published stay up and the place is recorded as posted, so the next run does not post the hook a second time.
+
+## What a run costs
+
+Every run ends by printing its Claude token use and an estimated cost. The web searches are the bulk of it, which is why they run on Claude Sonnet while the brief, the editor's gates and the writing stay on Claude Opus. The estimate leaves out Anthropic's per-search fee. X charges separately per post (see "Posting to X").
 
 ## Where the pipeline keeps its memory
 

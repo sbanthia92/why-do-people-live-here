@@ -11,7 +11,7 @@ from db.client import create_pool
 from pipeline.assessor import assess_candidate
 from pipeline.candidate_selector import run_selector
 from pipeline.content_generator import run_content_generation
-from pipeline.llm import LLMRefusalError
+from pipeline.llm import LLMRefusalError, usage_summary
 from pipeline.publisher import run_publish
 from pipeline.researcher import run_research
 
@@ -221,6 +221,7 @@ async def run_once(posts: int = 1, parallel: int = 1) -> int:
             produced += 1
     finally:
         await db_pool.close()
+        console.print(usage_summary())
     return produced
 
 

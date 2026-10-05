@@ -11,6 +11,13 @@ from rich.console import Console
 console = Console()
 
 MODEL = "claude-opus-5-5"
+# Web search is most of what a place costs: each search call reads tens of thousands
+# of tokens of web pages. Finding and quoting sources needs less judgement than the
+# brief, the editor's gates or the writing, so it runs on the cheaper model.
+SEARCH_MODEL = "claude-sonnet-5-5"
+# US dollars per million tokens (input, output), from Anthropic's price list on
+# 2026-09-25. Only used to print an estimate; update when prices change.
+_PRICES = {MODEL: (4.00, 20.00), SEARCH_MODEL: (2.00, 10.00)}
 # Lets the API re-run a safety-declined request on Anthropic's recommended fallback
 # model inside the same call, instead of handing us a refusal.
 _BETAS = ["server-side-fallback-2026-07-01"]
@@ -27,11 +34,62 @@ _MAX_CONCURRENT_REQUESTS = 6
 _WEB_SEARCH_TOOL = {
     "type": "web_search_20250305",
     "name": "web_search",
-    # The Wikipedia article is already in hand; these sources must be independent of it
-    "blocked_domains": ["wikipedia.org"],
+    # The Wikipedia article is already in hand, and these sources have to be independent
+    # of it. That rules out Wikipedia and the sites that copy or rewrite it: citing a
+    # mirror would let a claim "corroborate" itself.
+    "blocked_domains": [
+        "wikipedia.org",
+        "wikimedia.org",
+        "wikidata.org",
+        "wikiwand.com",
+        "kiddle.co",
+        "grokipedia.com",
+        "wikimili.com",
+        "alchetron.com",
+        "dbpedia.org",
+        "everybodywiki.com",
+    ],
 }
 
 T = TypeVar("T", bound=BaseModel)
+
+# Tokens used so far in this process, per model: [input, output, requests]
+_usage: dict[str, list[int]] = {}
+
+
+def _record_usage(response) -> None:
+    usage = response.usage
+    tokens_in = (
+        (usage.input_tokens or 0)
+        + (getattr(usage, "cache_creation_input_tokens", None) or 0)
+        + (getattr(usage, "cache_read_input_tokens", None) or 0)
+    )
+    # response.model is the model that actually answered (a fallback, if one stepped in)
+    totals = _usage.setdefault(response.model, [0, 0, 0])
+    totals[0] += tokens_in
+    totals[1] += usage.output_tokens or 0
+    totals[2] += 1
+
+
+def usage_summary() -> str:
+    """What this process has spent on Claude so far, as a few printable lines.
+
+    The dollar figure is an estimate from token counts. It leaves out the per-search
+    fee Anthropic charges for web search, and any model not in the price table.
+    """
+    if not _usage:
+        return "Claude usage: no requests made."
+    lines, total = [], 0.0
+    for model, (tokens_in, tokens_out, requests) in sorted(_usage.items()):
+        line = f"  {model}: {requests} requests, {tokens_in:,} tokens in, {tokens_out:,} out"
+        if model in _PRICES:
+            price_in, price_out = _PRICES[model]
+            cost = tokens_in / 1e6 * price_in + tokens_out / 1e6 * price_out
+            total += cost
+            line += f", about ${cost:.2f}"
+        lines.append(line)
+    return "\n".join([f"Claude usage (estimated ${total:.2f}, before web search fees):", *lines])
+
 
 _semaphores: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore]" = (
     weakref.WeakKeyDictionary()
@@ -73,6 +131,7 @@ async def parse(*, system: str, user: str, output_format: type[T], effort: str =
             betas=_BETAS,
             fallbacks="default",
         )
+    _record_usage(response)
     if response.stop_reason == "refusal":
         raise LLMRefusalError(f"Claude declined a {output_format.__name__} request")
     if response.parsed_output is None:
@@ -95,7 +154,7 @@ async def web_search_citations(*, system: str, user: str, max_searches: int = 3)
     for _ in range(_MAX_PAUSE_RESUMES + 1):
         async with _request_slot():
             response = await get_client().beta.messages.create(
-                model=MODEL,
+                model=SEARCH_MODEL,
                 max_tokens=_MAX_TOKENS,
                 system=system,
                 messages=messages,
@@ -104,6 +163,7 @@ async def web_search_citations(*, system: str, user: str, max_searches: int = 3)
                 betas=_BETAS,
                 fallbacks="default",
             )
+        _record_usage(response)
         if response.stop_reason == "refusal":
             raise LLMRefusalError("Claude declined a web research request")
 

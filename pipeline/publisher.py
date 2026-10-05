@@ -200,13 +200,17 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
     x_post_id = await post_to_x(
         content["post_text"], replies, image["url"] if image else None, dry_run=dry_run
     )
-    # A dry run can also leave a Markdown copy to review (the daily workflow turns
+    # Leave a Markdown copy of what was previewed or posted (the daily workflow turns
     # these into notifications).
-    if dry_run and (preview_dir := os.getenv("PREVIEW_DIR")):
+    if preview_dir := os.getenv("PREVIEW_DIR"):
         file = await write_preview(
-            db_pool, candidate_id, [content["post_text"], *replies], preview_dir
+            db_pool,
+            candidate_id,
+            [content["post_text"], *replies],
+            preview_dir,
+            x_post_id=x_post_id,
         )
-        console.log(f"[publisher] Preview written to {file}")
+        console.log(f"[publisher] {'Preview' if dry_run else 'Record'} written to {file}")
 
     await persist_post(
         db_pool,

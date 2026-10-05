@@ -148,7 +148,11 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         monkeypatch.setenv("DRY_RUN", "false")
         assert await run_once() == 1
 
-    assert len(list(tmp_path.iterdir())) == 1  # real posts write no preview file
+    # The real post overwrote the preview with a record that links to it on X
+    assert len(list(tmp_path.iterdir())) == 1
+    record = (tmp_path / "0001-alpha-island.md").read_text()
+    assert "**Posted to X:** https://x.com/i/status/x-2" in record
+    assert "Posted to X" not in preview
     assert await _statuses(db) == {"Alpha Island": "posted"}
     assert world.researched == ["Alpha Island"]  # the real run reused the stored research
     assert world.written == ["Alpha Island"]  # ...and posted the previewed text, not a new draft

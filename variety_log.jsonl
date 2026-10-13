@@ -1,10 +1,10 @@
-{"id": 1, "region": "Asia", "posted_at": "2026-10-02T23:44:43.666224+00:00", "story_category": "colonial_resettlement"}
-{"id": 2, "region": "Africa", "posted_at": "2026-10-05T18:18:15.378521+00:00", "story_category": "extreme_climate"}
-{"id": 3, "region": "North America", "posted_at": "2026-10-06T19:34:29.567561+00:00", "story_category": "colonial_resettlement"}
-{"id": 4, "region": "Antarctica", "posted_at": "2026-10-07T20:00:55.129465+00:00", "story_category": "extreme_climate"}
-{"id": 5, "region": "North America", "posted_at": "2026-10-08T19:58:15.87139+00:00", "story_category": "colonial_resettlement"}
-{"id": 6, "region": "Europe", "posted_at": "2026-10-09T19:34:15.040026+00:00", "story_category": "island_community"}
-{"id": 7, "region": "Africa", "posted_at": "2026-10-10T18:36:56.780673+00:00", "story_category": "colonial_resettlement"}
-{"id": 8, "region": "South America", "posted_at": "2026-10-11T18:56:38.665213+00:00", "story_category": "isolated"}
-{"id": 9, "region": "Oceania", "posted_at": "2026-10-12T22:10:26.44824+00:00", "story_category": "colonial_resettlement"}
-{"id": 10, "region": "North America", "posted_at": "2026-10-13T20:17:15.531135+00:00", "story_category": "ghost_town"}
+{"id": 1, "region": "Asia", "posted_at": "2026-10-02T16:44:43.666224-07:00", "story_category": "colonial_resettlement"}
+{"id": 2, "region": "Africa", "posted_at": "2026-10-05T11:18:15.378521-07:00", "story_category": "extreme_climate"}
+{"id": 3, "region": "North America", "posted_at": "2026-10-06T12:34:29.567561-07:00", "story_category": "colonial_resettlement"}
+{"id": 4, "region": "Antarctica", "posted_at": "2026-10-07T13:00:55.129465-07:00", "story_category": "extreme_climate"}
+{"id": 5, "region": "North America", "posted_at": "2026-10-08T12:58:15.87139-07:00", "story_category": "colonial_resettlement"}
+{"id": 6, "region": "Europe", "posted_at": "2026-10-09T12:34:15.040026-07:00", "story_category": "island_community"}
+{"id": 7, "region": "Africa", "posted_at": "2026-10-10T11:36:56.780673-07:00", "story_category": "colonial_resettlement"}
+{"id": 8, "region": "South America", "posted_at": "2026-10-11T11:56:38.665213-07:00", "story_category": "isolated"}
+{"id": 9, "region": "Oceania", "posted_at": "2026-10-12T15:10:26.44824-07:00", "story_category": "colonial_resettlement"}
+{"id": 10, "region": "North America", "posted_at": "2026-10-13T13:17:15.531135-07:00", "story_category": "ghost_town"}

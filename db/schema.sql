@@ -57,3 +57,8 @@ CREATE TABLE IF NOT EXISTS variety_log (
 -- Safe to re-run: candidates that passed the old scoring count as assessed.
 DROP TABLE IF EXISTS scores;
 UPDATE candidates SET status = 'assessed' WHERE status = 'scored';
+
+-- The "exclave" story type was renamed: its list also holds divided towns, leased
+-- territories and other border oddities that are not exclaves. Safe to re-run.
+UPDATE candidates SET story_category = 'border_oddity' WHERE story_category = 'exclave';
+UPDATE variety_log SET story_category = 'border_oddity' WHERE story_category = 'exclave';

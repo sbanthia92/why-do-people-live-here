@@ -209,7 +209,8 @@ isolated:
     - Cabo Polonio
     - Phugtal Monastery
 
-exclave:
+# Exclaves, enclaves, divided towns and other places a border has made strange
+border_oddity:
   places:
     - Llívia
     - Büsingen am Hochrhein

@@ -121,3 +121,22 @@ async def test_import_from_empty_directory_starts_clean(db, database_url, tmp_pa
 
     assert await import_state(database_url, tmp_path) == 0
     assert all(rows == [] for rows in (await _snapshot(db)).values())
+
+
+async def test_schema_renames_the_exclave_story_type(db):
+    """Saved state from before the rename is brought up to date when the schema is applied."""
+    await db.execute(
+        """
+        INSERT INTO candidates (place_name, wikipedia_url, story_category, status)
+        VALUES ('Valka', 'https://en.wikipedia.org/wiki/Valka', 'exclave', 'approved'),
+               ('Heimaey', 'https://en.wikipedia.org/wiki/Heimaey', 'island_community', 'posted')
+        """
+    )
+    await db.execute("INSERT INTO variety_log (region, story_category) VALUES ('Europe', 'exclave')")
+
+    await db.execute(_SCHEMA)
+    await db.execute(_SCHEMA)  # applied on every run, so it must be repeatable
+
+    rows = await db.fetch("SELECT place_name, story_category FROM candidates ORDER BY id")
+    assert [tuple(r) for r in rows] == [("Valka", "border_oddity"), ("Heimaey", "island_community")]
+    assert await db.fetchval("SELECT story_category FROM variety_log") == "border_oddity"

@@ -1,0 +1,846 @@
+{
+"Africville": [
+44.67,
+-63.62
+],
+"Akrotiri and Dhekelia": [
+34.58,
+32.98
+],
+"Alert, Nunavut": [
+82.5,
+-62.35
+],
+"Alicudi": [
+38.54,
+14.35
+],
+"Americana, São Paulo": [
+-22.74,
+-47.33
+],
+"Amundsen–Scott South Pole Station": [
+-90,
+0
+],
+"Anaktuvuk Pass, Alaska": [
+68.14,
+-151.73
+],
+"Anuta": [
+-11.61,
+169.85
+],
+"Aogashima": [
+32.46,
+139.77
+],
+"Arctic Village, Alaska": [
+68.12,
+-145.53
+],
+"Arica": [
+-18.48,
+-70.32
+],
+"Ascension Island": [
+-7.93,
+-14.37
+],
+"Attawapiskat First Nation": [
+52.92,
+-82.43
+],
+"Auroville": [
+12.01,
+79.81
+],
+"Baikonur": [
+45.62,
+63.32
+],
+"Barentsburg": [
+78.07,
+14.22
+],
+"Bettles, Alaska": [
+66.91,
+-151.52
+],
+"Bilibino": [
+68.05,
+166.45
+],
+"Birchtown, Nova Scotia": [
+43.74,
+-65.38
+],
+"Birobidzhan": [
+48.8,
+132.93
+],
+"Black Tickle": [
+53.46,
+-55.78
+],
+"Brčko District": [
+44.87,
+18.78
+],
+"Büsingen am Hochrhein": [
+47.7,
+8.69
+],
+"Cabinda Province": [
+-4.93,
+12.41
+],
+"Cabo Polonio": [
+-34.4,
+-53.79
+],
+"Cameron Highlands": [
+4.5,
+101.5
+],
+"Campione d'Italia": [
+45.97,
+8.97
+],
+"Ceuta": [
+35.89,
+-5.32
+],
+"Chatham Islands": [
+-44,
+-176.5
+],
+"Cherrapunji": [
+25.28,
+91.72
+],
+"Chichijima": [
+27.07,
+142.21
+],
+"Chinguetti": [
+20.45,
+-12.35
+],
+"Christmas Island": [
+-10.49,
+105.63
+],
+"Churchill, Manitoba": [
+58.78,
+-94.19
+],
+"Cocos (Keeling) Islands": [
+-12.12,
+96.89
+],
+"Colonia Tovar": [
+10.41,
+-67.29
+],
+"Coober Pedy": [
+-29.01,
+134.76
+],
+"Cordova, Alaska": [
+60.54,
+-145.75
+],
+"Culion": [
+11.89,
+120.02
+],
+"Da Lat": [
+11.94,
+108.44
+],
+"Dahagram–Angarpota": [
+26.3,
+88.95
+],
+"Dallol (ghost town)": [
+14.24,
+40.29
+],
+"Debundscha": [
+4.1,
+8.98
+],
+"Degania Alef": [
+32.71,
+35.57
+],
+"Derby Line, Vermont": [
+45,
+-72.1
+],
+"Diego Garcia": [
+-7.31,
+72.41
+],
+"Dras": [
+34.43,
+75.75
+],
+"Easter Island": [
+-27.12,
+-109.35
+],
+"Ebeye Island": [
+8.78,
+167.74
+],
+"El Alto": [
+-16.5,
+-68.16
+],
+"Esperanza, Santa Fe": [
+-31.44,
+-60.93
+],
+"Eureka, Nunavut": [
+79.99,
+-85.94
+],
+"Fair Isle": [
+59.54,
+-1.62
+],
+"Fernando de Noronha": [
+-3.85,
+-32.42
+],
+"Filadelfia": [
+-22.34,
+-60.03
+],
+"Floreana Island": [
+-1.3,
+-90.43
+],
+"Fort Chipewyan": [
+58.71,
+-111.16
+],
+"Foula": [
+60.13,
+-2.07
+],
+"Fraser's Hill": [
+3.71,
+101.74
+],
+"Freetown": [
+8.49,
+-13.24
+],
+"Funafuti": [
+-8.52,
+179.2
+],
+"Furnace Creek, California": [
+36.46,
+-116.87
+],
+"Gavdos": [
+34.83,
+24.08
+],
+"Ghadames": [
+30.13,
+9.5
+],
+"Gibraltar": [
+36.14,
+-5.35
+],
+"Giethoorn": [
+52.74,
+6.08
+],
+"Gorizia": [
+45.93,
+13.62
+],
+"Great Blasket Island": [
+52.09,
+-10.54
+],
+"Grise Fiord": [
+76.42,
+-82.9
+],
+"Grímsey": [
+66.55,
+-18
+],
+"Guantanamo Bay Naval Base": [
+19.92,
+-75.16
+],
+"Hammerfest": [
+70.66,
+23.68
+],
+"Hashima Island": [
+32.63,
+129.74
+],
+"Hebron, Newfoundland and Labrador": [
+58.2,
+-62.63
+],
+"Heimaey": [
+63.43,
+-20.27
+],
+"Heligoland": [
+54.18,
+7.89
+],
+"Hopedale, Newfoundland and Labrador": [
+55.46,
+-60.23
+],
+"Hyder, Alaska": [
+55.91,
+-130.02
+],
+"Igarka": [
+67.47,
+86.58
+],
+"Inuvik": [
+68.36,
+-133.73
+],
+"Iquitos": [
+-3.75,
+-73.25
+],
+"Isle de Jean Charles, Louisiana": [
+29.39,
+-90.48
+],
+"Ittoqqortoormiit": [
+70.49,
+-21.97
+],
+"Ivangorod": [
+59.37,
+28.22
+],
+"Juneau, Alaska": [
+58.3,
+-134.42
+],
+"Jungholz": [
+47.57,
+10.45
+],
+"Kaktovik, Alaska": [
+70.13,
+-143.62
+],
+"Kaliningrad Oblast": [
+54.8,
+21.42
+],
+"Karaganda": [
+49.8,
+73.11
+],
+"Kerguelen Islands": [
+-49.25,
+69.15
+],
+"Kiruna": [
+67.85,
+20.3
+],
+"Kivalina, Alaska": [
+67.73,
+-164.54
+],
+"Kleinwalsertal": [
+47.34,
+10.17
+],
+"Knoydart": [
+57.07,
+-5.66
+],
+"Ko Panyi": [
+8.34,
+98.5
+],
+"Komsomolsk-on-Amur": [
+50.57,
+137
+],
+"La Rinconada, Peru": [
+-14.63,
+-69.45
+],
+"Leadville, Colorado": [
+39.25,
+-106.29
+],
+"Linosa": [
+35.87,
+12.87
+],
+"Little Diomede Island": [
+65.75,
+-168.92
+],
+"Livigno": [
+46.53,
+10.13
+],
+"Llívia": [
+42.46,
+1.98
+],
+"Loma Plata": [
+-22.39,
+-59.84
+],
+"Longyearbyen": [
+78.22,
+15.65
+],
+"Lord Howe Island": [
+-31.55,
+159.09
+],
+"Mackinac Island, Michigan": [
+45.88,
+-84.62
+],
+"Madha": [
+25.28,
+56.33
+],
+"Magadan": [
+59.57,
+150.8
+],
+"Marble Bar, Western Australia": [
+-21.17,
+119.75
+],
+"Matinicus Isle, Maine": [
+43.9,
+-69.06
+],
+"McMurdo Station": [
+-77.85,
+166.67
+],
+"Melilla": [
+35.29,
+-2.94
+],
+"Mer Island, Queensland": [
+-9.92,
+144.05
+],
+"Minamidaitō, Okinawa": [
+25.83,
+131.23
+],
+"Monhegan, Maine": [
+43.77,
+-69.3
+],
+"Monowi, Nebraska": [
+42.83,
+-98.33
+],
+"Moosonee": [
+51.33,
+-80.72
+],
+"Mount Athos": [
+40.16,
+24.33
+],
+"Musandam Governorate": [
+25.92,
+56.28
+],
+"Mykines, Faroe Islands": [
+62.1,
+-7.6
+],
+"Mêdog County": [
+29.32,
+95.33
+],
+"Nahwa": [
+25.27,
+56.28
+],
+"Nain, Newfoundland and Labrador": [
+56.54,
+-61.72
+],
+"Nakhchivan Autonomous Republic": [
+39.33,
+45.5
+],
+"Narva": [
+59.38,
+28.2
+],
+"Neum": [
+42.92,
+17.62
+],
+"Neutral Moresnet": [
+50.73,
+6.01
+],
+"New Harmony, Indiana": [
+38.13,
+-87.93
+],
+"Niue": [
+-19.05,
+-169.85
+],
+"Nome, Alaska": [
+64.5,
+-165.4
+],
+"Norfolk Island": [
+-29.03,
+167.95
+],
+"Norilsk": [
+69.33,
+88.22
+],
+"Northwest Angle": [
+49.27,
+-95.05
+],
+"Nova Gorica": [
+45.96,
+13.64
+],
+"Nueva Germania": [
+-23.9,
+-56.7
+],
+"Nueva Helvecia": [
+-34.28,
+-57.2
+],
+"Ny-Ålesund": [
+78.92,
+11.92
+],
+"Oecusse": [
+-9.35,
+124.3
+],
+"Old Crow, Yukon": [
+67.57,
+-139.84
+],
+"Ontong Java Atoll": [
+-5.27,
+159.35
+],
+"Out Skerries": [
+60.42,
+-0.77
+],
+"Oymyakon": [
+63.46,
+142.79
+],
+"Palmerston Island": [
+-18.07,
+-163.17
+],
+"Pevek": [
+69.7,
+170.28
+],
+"Peñón de Vélez de la Gomera": [
+35.17,
+-4.3
+],
+"Phugtal Monastery": [
+33.27,
+77.18
+],
+"Pitcairn Islands": [
+-25.07,
+-130.1
+],
+"Point Hope, Alaska": [
+68.35,
+-166.76
+],
+"Point Roberts, Washington": [
+48.99,
+-123.06
+],
+"Port Arthur, Tasmania": [
+-43.15,
+147.85
+],
+"Potosí": [
+-19.59,
+-65.75
+],
+"Pozuzo": [
+-10.07,
+-75.55
+],
+"Puerto Williams": [
+-54.93,
+-67.62
+],
+"Pukapuka": [
+-10.88,
+-165.85
+],
+"Pyramiden": [
+78.66,
+16.32
+],
+"Qaanaaq": [
+77.47,
+-69.23
+],
+"Rabi Island": [
+-16.5,
+-180
+],
+"Rapa Iti": [
+-27.6,
+-144.33
+],
+"Resolute, Nunavut": [
+74.7,
+-94.83
+],
+"Robben Island": [
+-33.8,
+18.37
+],
+"Robinson Crusoe Island": [
+-33.64,
+-78.84
+],
+"Runde": [
+62.4,
+5.62
+],
+"Rùm": [
+57,
+-6.35
+],
+"Saint Helena": [
+-15.97,
+-5.7
+],
+"Saint Pierre and Miquelon": [
+46.85,
+-56.3
+],
+"Saint-Laurent-du-Maroni": [
+5.5,
+-54.03
+],
+"Samnaun": [
+46.93,
+10.35
+],
+"Sankovo-Medvezhye": [
+52.48,
+31.55
+],
+"Santa Cruz del Islote": [
+9.79,
+-75.86
+],
+"Sark": [
+49.43,
+-2.36
+],
+"Shimshal": [
+36.44,
+75.33
+],
+"Shohimardon": [
+39.98,
+71.8
+],
+"Siwa Oasis": [
+29.21,
+25.52
+],
+"Smith Island, Maryland": [
+37.98,
+-76.03
+],
+"Sokh District": [
+39.95,
+71.12
+],
+"Sosúa": [
+19.75,
+-70.52
+],
+"Spanish Lookout": [
+17.25,
+-89.0
+],
+"Spinalonga": [
+35.3,
+25.74
+],
+"St Kilda, Scotland": [
+57.81,
+-8.59
+],
+"Stanley, Falkland Islands": [
+-51.7,
+-57.85
+],
+"Stanstead, Quebec": [
+45.02,
+-72.1
+],
+"Stehekin, Washington": [
+48.31,
+-120.66
+],
+"Supai, Arizona": [
+36.23,
+-112.69
+],
+"Tangier, Virginia": [
+37.83,
+-75.99
+],
+"Taquile Island": [
+-15.78,
+-69.68
+],
+"Tasiilaq": [
+65.61,
+-37.63
+],
+"Tikopia": [
+-12.3,
+168.83
+],
+"Tiksi": [
+71.65,
+128.87
+],
+"Tokelau": [
+-9.17,
+-171.83
+],
+"Tory Island": [
+55.26,
+-8.22
+],
+"Trevelin": [
+-43.08,
+-71.47
+],
+"Tristan da Cunha": [
+-37.12,
+-12.29
+],
+"Tuktoyaktuk": [
+69.45,
+-133.04
+],
+"Ulleungdo": [
+37.5,
+130.86
+],
+"Ushuaia": [
+-54.81,
+-68.31
+],
+"Utqiagvik, Alaska": [
+71.29,
+-156.79
+],
+"Valga, Estonia": [
+57.78,
+26.03
+],
+"Valka": [
+57.77,
+26
+],
+"Vardø (town)": [
+70.37,
+31.11
+],
+"Verkhoyansk": [
+67.55,
+133.38
+],
+"Villa General Belgrano": [
+-31.97,
+-64.57
+],
+"Villa Las Estrellas": [
+-62.2,
+-58.97
+],
+"Vorkuta": [
+67.5,
+64.03
+],
+"Vorukh": [
+39.85,
+70.58
+],
+"Vostok Station": [
+-78.46,
+106.84
+],
+"Wadi Halfa": [
+21.78,
+31.37
+],
+"Whittier, Alaska": [
+60.77,
+-148.68
+],
+"Yakutat, Alaska": [
+59.55,
+-139.73
+],
+"Yakutsk": [
+62.03,
+129.73
+],
+"Yeruham": [
+30.99,
+34.93
+],
+"Yonaguni": [
+24.46,
+122.99
+]
+}

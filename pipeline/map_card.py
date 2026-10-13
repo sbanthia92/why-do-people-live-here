@@ -78,10 +78,15 @@ def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(min(1.0, math.sqrt(a)))
 
 
+def _nearest_major(lat: float, lon: float) -> list:
+    """The [name, lat, lon, population] entry of the closest major city."""
+    cities = [c for c in _data()["cities"] if c[3] >= _MAJOR_CITY_POPULATION]
+    return min(cities, key=lambda c: distance_km(lat, lon, c[1], c[2]))
+
+
 def nearest_major_city(lat: float, lon: float) -> tuple[str, float]:
     """(name, distance in km) of the closest city of at least _MAJOR_CITY_POPULATION."""
-    cities = [c for c in _data()["cities"] if c[3] >= _MAJOR_CITY_POPULATION]
-    name, clat, clon, _ = min(cities, key=lambda c: distance_km(lat, lon, c[1], c[2]))
+    name, clat, clon, _ = _nearest_major(lat, lon)
     return name, distance_km(lat, lon, clat, clon)
 
 
@@ -230,11 +235,16 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
         if r < size / 2 - 30 * s:
             draw.text((centre, centre - r - 6 * s), f"{km:,} km", font=small, fill=MUTED, anchor="ms")
 
-    # Cities inside the map, largest first, with room kept around the place itself
+    # Cities inside the map: the nearest major one first, since the panel names it,
+    # then the largest, with room kept around the place itself
+    nearest = _nearest_major(lat, lon)
     shown = 0
-    for name, clat, clon, _population in data["cities"]:
+    for city in [nearest, *(c for c in data["cities"] if c is not nearest)]:
+        name, clat, clon, _population = city
         km = distance_km(lat, lon, clat, clon)
-        if shown >= _MAX_CITY_LABELS or km > radius_km * 0.96 or km < radius_km * 0.12:
+        # The nearest city may sit close in; it only has to clear the dot's halo
+        closest_allowed = radius_km * (0.045 if city is nearest else 0.12)
+        if shown >= _MAX_CITY_LABELS or km > radius_km * 0.96 or km < closest_allowed:
             continue
         x, y = on_map(clon, clat)
         draw.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=CREAM)

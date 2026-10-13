@@ -94,3 +94,19 @@ async def test_map_card_for_candidate_gives_up_quietly(tmp_path):
 def test_map_data_is_bundled():
     data = map_card._data()
     assert len(data["land"]) > 1000 and len(data["cities"]) > 200
+
+
+def test_nearest_major_city_is_labelled_on_the_map(monkeypatch):
+    """The panel names the nearest city, so the map must show it even if larger ones crowd in."""
+    labels: list[str] = []
+    real_text = map_card.ImageDraw.ImageDraw.text
+
+    def record(self, xy, text, *args, **kwargs):
+        labels.append(text)
+        return real_text(self, xy, text, *args, **kwargs)
+
+    monkeypatch.setattr(map_card.ImageDraw.ImageDraw, "text", record)
+    render_map_card("Valka", 57.77, 26.0, "border oddity · Europe")  # Riga is 150 km away
+
+    assert labels.count("Riga") == 2  # once on the map, once in the panel
+    assert {"Moscow", "Kyiv"} <= set(labels)  # the largest cities in view are still there

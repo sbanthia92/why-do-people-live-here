@@ -30,6 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- The `exclave` story type is now `border_oddity`: its list also holds divided towns and leased territories, and the label is printed on the map card. Existing state is renamed when the schema is applied.
 - The daily workflow is scheduled for 09:17 UTC again, to land at about 14:30 UTC: GitHub starts it roughly five hours late whatever the minute.
 - Pillow is now a dependency (it draws the map cards).
 - The daily workflow runs at 14:17 UTC (was 09:17), which is daytime for audiences in the Americas, Europe and India.
@@ -49,6 +50,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The daily workflow uses a persistent `DATABASE_URL` secret instead of a throwaway Postgres container, and takes the Wikimedia contact from a repository variable.
 
 ### Fixed
+- The map card names the nearest major city in its panel but did not always label it on the map, where only the five largest cities in view were shown.
 - An empty Anthropic credit balance was logged as "web search unavailable" and then crashed with a traceback. It now stops the run with one clear line, and the state is still saved.
 - Wikipedia requests were rejected with HTTP 403 because no User-Agent was sent.
 - Article titles containing commas or parentheses were double-encoded and returned 404.

@@ -2,9 +2,11 @@ name: Daily post
 
 on:
   schedule:
-    # 14:17 UTC daily: mid-morning in the Americas, afternoon in Europe, evening in
-    # India. Off the hour, because scheduled runs queue longest on the hour.
-    - cron: "17 14 * * *"
+    # Scheduled for 09:17 UTC so that it runs at about 14:30 UTC: GitHub has started
+    # this workflow roughly five hours late every day, whatever the minute. The target
+    # is mid-morning in the Americas, afternoon in Europe, evening in India. If the
+    # delay ever disappears, posts will go out five hours early; move this back then.
+    - cron: "17 9 * * *"
   workflow_dispatch:         # allow manual trigger
     inputs:
       posts:
@@ -73,7 +75,10 @@ jobs:
 
       - name: Install dependencies
         if: steps.mode.outputs.run == 'true'
-        run: pip install . pgserver
+        run: |
+          pip install . pgserver
+          # The map card's lettering; without it the card falls back to a plainer font
+          sudo apt-get install -y --no-install-recommends fonts-dejavu-core > /dev/null
 
       # The pipeline's memory (what has been posted, rejected or queued) is kept as
       # files on the `data` branch. Each run loads them into a throwaway database,
@@ -116,6 +121,16 @@ jobs:
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
               commit --quiet -m "State after run ${GITHUB_RUN_ID}"
           git push origin HEAD:data
+
+      # The map cards drawn for this run, so a preview's image can be looked at
+      - name: Keep map cards
+        if: always() && steps.mode.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-cards
+          path: previews/*.png
+          if-no-files-found: ignore
+          retention-days: 14
 
       # Each post, previewed or published, becomes an issue assigned to the repository
       # owner, which GitHub emails to them, and is also shown on the run's summary page.

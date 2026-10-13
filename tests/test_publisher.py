@@ -71,32 +71,80 @@ async def test_search_wikimedia_rejects_unusable_images(imageinfo):
     assert await _search(imageinfo) is None
 
 
-@pytest.mark.parametrize(("setting", "expect_lookup"), [(None, False), ("true", True)])
-async def test_images_are_off_unless_enabled(monkeypatch, setting, expect_lookup):
-    """run_publish only looks for a photo when POST_IMAGES is switched on."""
+_CANDIDATE = {
+    "place_name": "Testville",
+    "wikipedia_url": _URL,
+    "story_category": "ghost_town",
+    "region": "Asia",
+}
+_CARD = {"path": "/tmp/testville.png", "alt_text": "Map showing Testville."}
+
+
+async def _publish(monkeypatch, *, env: dict, card, photo=None) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+    """Run run_publish in a dry run with the given settings; returns the mocks it used."""
     from pipeline.publisher import run_publish
 
-    monkeypatch.delenv("POST_IMAGES", raising=False)
-    if setting:
-        monkeypatch.setenv("POST_IMAGES", setting)
+    for key in ("MAP_CARDS", "POST_IMAGES", "PREVIEW_DIR", "SOURCE_LINK"):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
     pool = AsyncMock()
-    pool.fetchrow.return_value = {"place_name": "Testville", "wikipedia_url": _URL}
-    lookup = AsyncMock(return_value=None)
+    pool.fetchrow.return_value = _CANDIDATE
+    draw, lookup, post = AsyncMock(return_value=card), AsyncMock(return_value=photo), AsyncMock(return_value=None)
 
     with (
+        patch("pipeline.publisher.map_card_for_candidate", new=draw),
         patch("pipeline.publisher.get_image_for_candidate", new=lookup),
-        patch("pipeline.publisher.post_to_x", new=AsyncMock(return_value=None)),
+        patch("pipeline.publisher.post_to_x", new=post),
     ):
         await run_publish(pool, 1, {"post_text": "Hook.", "thread_parts": None}, dry_run=True)
+    return draw, lookup, post
 
-    assert lookup.await_count == (1 if expect_lookup else 0)
+
+async def test_map_card_goes_on_the_first_post_by_default(monkeypatch):
+    draw, lookup, post = await _publish(monkeypatch, env={}, card=_CARD)
+
+    assert draw.await_args.args[:3] == ("Testville", _URL, "ghost town · Asia")
+    lookup.assert_not_awaited()  # no photo lookup: photos stay off
+    assert post.await_args.args[2] == "/tmp/testville.png"
+    assert post.await_args.kwargs["alt_text"] == "Map showing Testville."
+
+
+async def test_no_image_when_maps_are_off_or_the_place_has_no_coordinates(monkeypatch):
+    draw, lookup, post = await _publish(monkeypatch, env={"MAP_CARDS": "false"}, card=_CARD)
+    draw.assert_not_awaited()
+    lookup.assert_not_awaited()
+    assert post.await_args.args[2] is None
+
+    # Coordinates missing: the card can't be drawn, and the post goes out without one
+    _, lookup, post = await _publish(monkeypatch, env={}, card=None)
+    lookup.assert_not_awaited()
+    assert post.await_args.args[2] is None
+
+
+async def test_photo_is_only_a_fallback_and_only_when_enabled(monkeypatch):
+    photo = {"url": "https://upload.example/p.jpg", "credit": "Jo", "license": "CC0"}
+    _, lookup, post = await _publish(
+        monkeypatch, env={"POST_IMAGES": "true"}, card=None, photo=photo
+    )
+    lookup.assert_awaited_once()
+    assert post.await_args.args[2] == "https://upload.example/p.jpg"
+
+    _, lookup, post = await _publish(
+        monkeypatch, env={"POST_IMAGES": "true"}, card=_CARD, photo=photo
+    )
+    lookup.assert_not_awaited()  # the map card wins
+    assert post.await_args.args[2] == "/tmp/testville.png"
 
 
 def test_footer_names_the_source_without_a_link_by_default(monkeypatch):
     """A post containing a link costs far more on X, so the link is opt-in."""
     monkeypatch.delenv("SOURCE_LINK", raising=False)
     encoded = "https://en.wikipedia.org/wiki/Shell%2C_Ecuador"
-    assert _footer(encoded, None) == "Source: Wikipedia, “Shell, Ecuador”"
+    assert _footer(encoded, None) == (
+        "Source: Wikipedia, “Shell, Ecuador”\n\n"
+        "A new remote, harsh or strange place every day. Follow for more."
+    )
     assert "http" not in _footer(_URL, None)
 
 
@@ -112,9 +160,10 @@ def test_footer_credits_author_licence_and_source(monkeypatch):
         "Source: https://en.wikipedia.org/wiki/Testville\n"
         "Photo: Jo Bloggs, CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0,"
         " via Wikimedia Commons\n"
-        "https://commons.wikimedia.org/wiki/File:Testville.jpg"
+        "https://commons.wikimedia.org/wiki/File:Testville.jpg\n\n"
+        "A new remote, harsh or strange place every day. Follow for more."
     )
-    assert _footer(_URL, None) == "Source: https://en.wikipedia.org/wiki/Testville"
+    assert _footer(_URL, None).startswith("Source: https://en.wikipedia.org/wiki/Testville\n")
 
 
 async def test_thread_failure_after_first_post_keeps_what_was_published():

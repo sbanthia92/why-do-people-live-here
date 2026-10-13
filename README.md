@@ -23,14 +23,14 @@ A dry run prints each post and stores it with the candidate marked `approved`. T
 1. **Candidate selection** — `config/seed_categories.yaml` gives each story category a source of place articles: Wikipedia categories to crawl (one subcategory level deep) and/or a hand-picked list of article titles, for story types Wikipedia's categories don't cover well. A cheap structural filter drops thin articles before any LLM call; crawled articles must also have coordinates, which keeps out films, lists and concept pages. After editing the hand-picked lists, run `python scripts/verify_seed_places.py` to check every title exists, isn't a redirect or duplicate, and passes the filter.
 2. **Research** — The full Wikipedia article plus passages Claude finds through three concurrent web searches (origin, livelihood, daily life; run on Claude Sonnet, the cheaper model, with Wikipedia and its mirrors blocked) are synthesised into a research brief in which every claim is tagged with its sources. The place's region (continent) is recorded here.
 3. **Assessment** — Claude, acting as editor, answers two yes/no questions about the brief: is the central answer backed by a source independent of Wikipedia, and is there a real "why would anyone live there?" story with an answer. A place is posted only if both are yes. The reasons are recorded, along with notes for the writer.
-4. **Content generation** — Claude writes from the brief alone and decides the length: a single post, or a thread of up to four. Length is checked in code the way X counts it (links count as 23 characters; some symbols count double), with one rewrite if a draft runs over.
-5. **Publishing** — Content is posted to X via the v2 API, followed by a reply naming the source article. Every step is recorded in Postgres.
+4. **Content generation** — Claude writes from the brief alone and decides the length: a single post, or a thread of up to four. Every draft then has to pass two checks. Length is checked in code the way X counts it (links count as 23 characters; some symbols count double). A separate fact check compares each claim in the draft with the brief and reports any number, name, date or quotation the brief does not support. A draft that fails is sent back with the reasons, up to twice; if it still fails, the place is not posted.
+5. **Publishing** — Content is posted to X via the v2 API with a map card on the first post, followed by a reply naming the source article and inviting a follow. Every step is recorded in Postgres.
 
 ## Images
 
-Posts are text-only by default. Setting `POST_IMAGES=true` attaches the article's lead image when it is a photo under CC BY, CC BY-SA, CC0 or the public domain, and adds a credit to the closing reply: author, licence with a link, and a link to the file on Wikimedia Commons.
+**Map cards (on by default).** The first post of each thread carries a locator card drawn by `pipeline/map_card.py`: a regional map centred on the place with distance rings and the nearest cities, a small globe, the coordinates, and the nearest major city with its distance. It is drawn from [Natural Earth](https://www.naturalearthdata.com/) coastlines and city data, which are in the public domain, so there is no photograph and no licence to get wrong. The card also gets a text description for screen readers. A place with no coordinates on Wikipedia is posted without one. Set `MAP_CARDS=false` to turn the cards off.
 
-This is off by default because reuse on X is not risk-free: posting grants X a broad licence that a CC licence does not let you pass on, Commons licence labels are occasionally wrong, and a copyright licence does not cover people's image rights, trademarks or, in some countries, recent buildings and artworks.
+**Photos (off by default).** Setting `POST_IMAGES=true` lets a place with no map card fall back to the article's lead image, when that is a photo under CC BY, CC BY-SA, CC0 or the public domain, with a credit in the closing reply: author, licence with a link, and a link to the file on Wikimedia Commons. This is off because reuse on X is not risk-free: posting grants X a broad licence that a CC licence does not let you pass on, Commons licence labels are occasionally wrong, and a copyright licence does not cover people's image rights, trademarks or, in some countries, recent buildings and artworks.
 
 ## Variety
 
@@ -77,7 +77,7 @@ The saved state leaves out the full Wikipedia article text, which is only needed
 
 ## Deployment
 
-`.github/workflows/post.yml` runs the pipeline daily at 14:17 UTC, and can be triggered by hand. It has two modes.
+`.github/workflows/post.yml` runs the pipeline daily, and can be triggered by hand. It is scheduled for 09:17 UTC and in practice starts at about 14:30 UTC, because GitHub has been starting it roughly five hours late. It has two modes.
 
 **Preview mode (the default).** Nothing is sent to X. Each post is filed as a GitHub issue labelled `preview` and assigned to the repository owner, so GitHub emails it to them; it also appears on the run's summary page. The issue shows every post with its character count, the editor's two yes/no verdicts with their reasons, and the web sources used. This mode needs only:
 

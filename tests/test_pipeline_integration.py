@@ -15,7 +15,7 @@ pgserver = pytest.importorskip("pgserver")
 
 from db.client import _init_connection
 from pipeline.assessor import Assessment
-from pipeline.content_generator import Posts
+from pipeline.content_generator import FactCheck, Posts
 from pipeline.researcher import ResearchSummary
 from scheduler.run_pipeline import run_once
 
@@ -51,6 +51,7 @@ class FakeWorld:
         self.regions = regions
         self.no_angle = no_angle
         self.written: list[str] = []
+        self.card_contexts: list[str] = []
         self.researched: list[str] = []
         self.posted: list[dict] = []
         self._in_flight = 0
@@ -74,13 +75,21 @@ class FakeWorld:
                 has_angle=place not in self.no_angle,
                 writer_notes="Lead with the ferry.",
             )
+        if output_format is FactCheck:
+            return FactCheck(unsupported=[])
         assert output_format is Posts
         self.written.append(place)
         return Posts(posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."])
 
-    async def post_to_x(self, post_text, thread_parts, image_url, dry_run=False):
-        self.posted.append({"text": post_text, "replies": thread_parts, "dry_run": dry_run})
+    async def post_to_x(self, post_text, thread_parts, image_url, dry_run=False, alt_text=None):
+        self.posted.append(
+            {"text": post_text, "replies": thread_parts, "dry_run": dry_run, "image": image_url}
+        )
         return None if dry_run else f"x-{len(self.posted)}"
+
+    async def map_card(self, place_name, wikipedia_url, context, directory):
+        self.card_contexts.append(context)
+        return {"path": f"/tmp/{place_name}.png", "alt_text": f"Map showing {place_name}."}
 
     def patches(self):
         source = [{"url": "https://example.org/a", "snippet": "s", "source_name": "Example"}]
@@ -93,6 +102,7 @@ class FakeWorld:
             patch("pipeline.researcher.fetch_web_sources", new=AsyncMock(return_value=source)),
             patch("pipeline.llm.parse", new=self.parse),
             patch("pipeline.publisher.get_image_for_candidate", new=AsyncMock(return_value=None)),
+            patch("pipeline.publisher.map_card_for_candidate", new=self.map_card),
             patch("pipeline.publisher.post_to_x", new=self.post_to_x),
         ]
 
@@ -124,6 +134,8 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
         assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
         assert "**4/4**" in preview and "> Source: Wikipedia, “Alpha Island”" in preview
+        assert "> A new remote, harsh or strange place every day. Follow for more." in preview
+        assert "**Image on the first post:** Map showing Alpha Island." in preview
         assert "- **Independently backed:** yes. backed by [W][1]" in preview
         assert "story:** yes. no road in" in preview
         assert "**Editor's notes to the writer:** Lead with the ferry." in preview
@@ -161,7 +173,14 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
     log = await db.fetchrow("SELECT region, story_category FROM variety_log")
     assert tuple(log) == ("Oceania", "island_community")
     # The closing reply carries the source link
-    assert world.posted[-1]["replies"][-1] == "Source: Wikipedia, “Alpha Island”"
+    assert world.posted[-1]["replies"][-1] == (
+        "Source: Wikipedia, “Alpha Island”\n\n"
+        "A new remote, harsh or strange place every day. Follow for more."
+    )
+    # The first post carries the map card, labelled with the story type and region
+    assert world.posted[-1]["image"] == "/tmp/Alpha Island.png"
+    assert world.card_contexts[-1] == "island community · Oceania"
+    assert await db.fetchval("SELECT image_url FROM posts WHERE NOT dry_run") == "Alpha Island.png"
 
 
 async def test_variety_rotates_story_category(db):

@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Map cards: the first post of each thread carries a locator card drawn from public-domain Natural Earth data, with a text description for screen readers.
+- Fact check: every draft is compared claim by claim with its research brief, and sent back to the writer if a number, name, date or quotation is not supported. A draft that still fails after two rewrites is not posted.
+- The closing reply ends with an invitation to follow.
 - In publishing mode each post is filed as an issue labelled `posted`, linking to it on X.
 - Profile picture and banner for the X account in `assets/`, with the script that draws them.
 - Every run prints its Claude token use and an estimated cost.
@@ -27,6 +30,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- The daily workflow is scheduled for 09:17 UTC again, to land at about 14:30 UTC: GitHub starts it roughly five hours late whatever the minute.
+- Pillow is now a dependency (it draws the map cards).
 - The daily workflow runs at 14:17 UTC (was 09:17), which is daytime for audiences in the Americas, Europe and India.
 - Web search runs on Claude Sonnet 5.5 instead of Opus 5.5, roughly halving its price per token; the brief, gates and writing stay on Opus.
 - Web search blocks Wikipedia mirrors and derivatives (Kiddle, Grokipedia, Wikiwand and others), which would otherwise count as independent corroboration.

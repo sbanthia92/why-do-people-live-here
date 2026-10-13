@@ -3,7 +3,9 @@
 import asyncio
 import io
 import os
+import tempfile
 import urllib.parse
+from pathlib import Path
 
 import httpx
 import tweepy
@@ -12,6 +14,7 @@ from rich.panel import Panel
 
 from pipeline.candidate_selector import _HEADERS
 from pipeline.image_sourcer import get_image_for_candidate
+from pipeline.map_card import map_card_for_candidate
 from pipeline.preview import write_preview
 from pipeline.xtext import weighted_length
 
@@ -34,6 +37,11 @@ def _source_link_enabled() -> bool:
     a plain one, so the source is named in text instead.
     """
     return os.getenv("SOURCE_LINK", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _map_cards_enabled() -> bool:
+    """Whether the first post carries a locator map we draw ourselves (on unless MAP_CARDS=false)."""
+    return os.getenv("MAP_CARDS", "true").strip().lower() in {"1", "true", "yes"}
 
 
 def _x_client() -> tweepy.Client:
@@ -61,6 +69,7 @@ async def post_to_x(
     thread_parts: list[str] | None,
     image_url: str | None,
     dry_run: bool = False,
+    alt_text: str | None = None,
 ) -> str | None:
     """Post to X and return the post ID.
 
@@ -84,7 +93,7 @@ async def post_to_x(
             console.print(f"Image: {image_url}")
         return None
 
-    media_id = await upload_image(image_url) if image_url else None
+    media_id = await upload_image(image_url, alt_text) if image_url else None
     client = _x_client()
     first_id: str | None = None
     reply_to: str | None = None
@@ -109,24 +118,35 @@ async def post_to_x(
     return first_id
 
 
-async def upload_image(image_url: str) -> str | None:
-    """Download an image from Wikimedia and upload it to X media upload endpoint.
+async def upload_image(source: str, alt_text: str | None = None) -> str | None:
+    """Upload an image to X, from a local file or a URL, and describe it for screen readers.
 
     Returns the X media_id string, or None on failure.
     """
     try:
-        async with httpx.AsyncClient(timeout=30.0, headers=_HEADERS) as client:
-            resp = await client.get(image_url, follow_redirects=True)
-            resp.raise_for_status()
-        # Path only: Wikimedia thumbnail URLs carry a query string after the extension
-        filename = urllib.parse.urlparse(image_url).path.rsplit("/", 1)[-1] or "image.jpg"
-        media = await asyncio.to_thread(
-            _x_media_api().media_upload, filename=filename, file=io.BytesIO(resp.content)
-        )
-        return str(media.media_id)
-    except (httpx.HTTPError, tweepy.TweepyException) as exc:
+        if source.startswith(("http://", "https://")):
+            async with httpx.AsyncClient(timeout=30.0, headers=_HEADERS) as client:
+                resp = await client.get(source, follow_redirects=True)
+                resp.raise_for_status()
+            data = resp.content
+            # Path only: Wikimedia thumbnail URLs carry a query string after the extension
+            filename = urllib.parse.urlparse(source).path.rsplit("/", 1)[-1] or "image.jpg"
+        else:
+            data = Path(source).read_bytes()
+            filename = Path(source).name
+        api = _x_media_api()
+        media = await asyncio.to_thread(api.media_upload, filename=filename, file=io.BytesIO(data))
+    except (httpx.HTTPError, OSError, tweepy.TweepyException) as exc:
         console.log(f"[publisher] Image upload failed, posting without it: {exc!r}")
         return None
+
+    if alt_text:
+        try:
+            await asyncio.to_thread(api.create_media_metadata, media.media_id, alt_text[:1000])
+        except tweepy.TweepyException as exc:
+            # The image is still usable without its description
+            console.log(f"[publisher] Could not set image description: {exc!r}")
+    return str(media.media_id)
 
 
 async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
@@ -166,10 +186,14 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
         )
 
 
-def _footer(wikipedia_url: str, image: dict | None) -> str:
-    """Closing reply: where the facts and the photo came from.
+# Closes every thread. It rides on the source reply instead of being a post of its own.
+FOLLOW_LINE = "A new remote, harsh or strange place every day. Follow for more."
 
-    The photo credit carries what a Creative Commons licence asks for: the author,
+
+def _footer(wikipedia_url: str, photo: dict | None) -> str:
+    """Closing reply: where the facts (and any photo) came from, and an invitation to follow.
+
+    A photo credit carries what a Creative Commons licence asks for: the author,
     the licence and a link to it, and a link to the source file.
     """
     if _source_link_enabled():
@@ -177,28 +201,40 @@ def _footer(wikipedia_url: str, image: dict | None) -> str:
     else:
         title = urllib.parse.unquote(wikipedia_url.rstrip("/").split("/wiki/")[-1])
         lines = [f"Source: Wikipedia, “{title.replace('_', ' ')}”"]
-    if image:
-        license_part = " ".join(filter(None, [image["license"], image.get("license_url")]))
-        lines.append(f"Photo: {image['credit']}, {license_part}, via Wikimedia Commons")
-        if image.get("page_url"):
-            lines.append(image["page_url"])
+    if photo:
+        license_part = " ".join(filter(None, [photo["license"], photo.get("license_url")]))
+        lines.append(f"Photo: {photo['credit']}, {license_part}, via Wikimedia Commons")
+        if photo.get("page_url"):
+            lines.append(photo["page_url"])
+    lines += ["", FOLLOW_LINE]
     return "\n".join(lines)
 
 
 async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool = False) -> None:
-    """Orchestrate image upload, X posting, and DB persistence for a single candidate."""
+    """Orchestrate the image, X posting, and DB persistence for a single candidate."""
     candidate = await db_pool.fetchrow(
-        "SELECT place_name, wikipedia_url FROM candidates WHERE id = $1", candidate_id
+        "SELECT place_name, wikipedia_url, story_category, region FROM candidates WHERE id = $1",
+        candidate_id,
     )
-    image = (
-        await get_image_for_candidate(candidate["place_name"], candidate["wikipedia_url"])
-        if _images_enabled()
-        else None
-    )
-    replies = [*(content["thread_parts"] or []), _footer(candidate["wikipedia_url"], image)]
+    name, url = candidate["place_name"], candidate["wikipedia_url"]
+
+    # One image on the first post: the map card we draw, or failing that a licensed photo
+    card = photo = None
+    if _map_cards_enabled():
+        context = " · ".join(
+            filter(None, [(candidate["story_category"] or "").replace("_", " "), candidate["region"]])
+        )
+        directory = Path(os.getenv("PREVIEW_DIR") or tempfile.gettempdir())
+        card = await map_card_for_candidate(name, url, context, directory)
+    if card is None and _images_enabled():
+        photo = await get_image_for_candidate(name, url)
+    image_source = card["path"] if card else photo["url"] if photo else None
+    alt_text = card["alt_text"] if card else None
+
+    replies = [*(content["thread_parts"] or []), _footer(url, photo)]
 
     x_post_id = await post_to_x(
-        content["post_text"], replies, image["url"] if image else None, dry_run=dry_run
+        content["post_text"], replies, image_source, dry_run=dry_run, alt_text=alt_text
     )
     # Leave a Markdown copy of what was previewed or posted (the daily workflow turns
     # these into notifications).
@@ -209,6 +245,7 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             [content["post_text"], *replies],
             preview_dir,
             x_post_id=x_post_id,
+            image_note=alt_text,
         )
         console.log(f"[publisher] {'Preview' if dry_run else 'Record'} written to {file}")
 
@@ -218,8 +255,8 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
         {
             "post_text": content["post_text"],
             "thread_parts": content["thread_parts"],
-            "image_url": image["url"] if image else None,
-            "image_credit": f"{image['credit']} ({image['license']})" if image else None,
+            "image_url": Path(card["path"]).name if card else photo["url"] if photo else None,
+            "image_credit": f"{photo['credit']} ({photo['license']})" if photo else None,
             "x_post_id": x_post_id,
             "dry_run": dry_run,
         },

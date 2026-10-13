@@ -20,12 +20,14 @@ async def write_preview(
     parts: list[str],
     directory: str,
     x_post_id: str | None = None,
+    image_note: str | None = None,
 ) -> Path:
     """Render one post, with the editor's verdict and sources, to `directory`.
 
     `parts` is every post in order, including the closing source reply. The first
     line of the file is a `# ` heading that doubles as a notification title. Pass
     `x_post_id` for a post that has gone out, and the file links to it on X.
+    `image_note` describes the image attached to the first post, if there is one.
     """
     row = await db_pool.fetchrow(
         """
@@ -53,6 +55,7 @@ async def write_preview(
         f"{category} · {row['region'] or 'region unknown'} · [Wikipedia]({row['wikipedia_url']})",
         "",
         *([f"**Posted to X:** https://x.com/i/status/{x_post_id}", ""] if x_post_id else []),
+        *([f"**Image on the first post:** {image_note}", ""] if image_note else []),
         "## Post",
         "",
     ]

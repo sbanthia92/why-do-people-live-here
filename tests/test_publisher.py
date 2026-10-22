@@ -16,12 +16,30 @@ def _response(data: dict) -> MagicMock:
     return resp
 
 
-def _imageinfo(license_name: str, mime: str = "image/jpeg", **extra_meta) -> dict:
+_LICENSES = {  # Commons machine code -> (short name, AttributionRequired), as Commons reports them
+    "cc0": ("CC0", "false"),
+    "pd": ("Public domain", "false"),
+    "cc-by-sa-4.0": ("CC BY-SA 4.0", "true"),
+    "cc-by-2.0": ("CC BY 2.0", "true"),
+}
+
+
+def _imageinfo(
+    license_code: str = "pd",
+    *,
+    mime: str = "image/jpeg",
+    repository: str = "shared",
+    artist: str = '<a href="//commons.wikimedia.org/wiki/User:Jo">Jo Bloggs</a>',
+    **meta_overrides,
+) -> dict:
+    short_name, attribution = _LICENSES.get(license_code, (license_code, "true"))
     meta = {
-        "LicenseShortName": {"value": license_name},
-        "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0"},
-        "Artist": {"value": '<a href="//commons.wikimedia.org/wiki/User:Jo">Jo Bloggs</a>'},
-        **extra_meta,
+        "License": {"value": license_code},
+        "LicenseShortName": {"value": short_name},
+        "AttributionRequired": {"value": attribution},
+        "Restrictions": {"value": ""},
+        "Artist": {"value": artist},
+        **{k: {"value": v} for k, v in meta_overrides.items()},
     }
     info = {
         "url": "https://upload.wikimedia.org/full.jpg",
@@ -30,7 +48,7 @@ def _imageinfo(license_name: str, mime: str = "image/jpeg", **extra_meta) -> dic
         "mime": mime,
         "extmetadata": meta,
     }
-    return {"query": {"pages": [{"imageinfo": [info]}]}}
+    return {"query": {"pages": [{"imagerepository": repository, "imageinfo": [info]}]}}
 
 
 async def _search(imageinfo: dict) -> dict | None:
@@ -40,34 +58,48 @@ async def _search(imageinfo: dict) -> dict | None:
         return await search_wikimedia("Testville", _URL)
 
 
-async def test_search_wikimedia_returns_attribution_details():
-    image = await _search(_imageinfo("CC BY-SA 4.0"))
+async def test_search_wikimedia_returns_photo_details():
+    image = await _search(_imageinfo("pd"))
 
     assert image == {
         "url": "https://upload.wikimedia.org/thumb.jpg",
         "credit": "Jo Bloggs",  # HTML stripped
-        "license": "CC BY-SA 4.0",
-        "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+        "license": "public domain",
         "page_url": "https://commons.wikimedia.org/wiki/File:Testville.jpg",
     }
 
 
-@pytest.mark.parametrize("license_name", ["CC BY 2.0", "CC0", "Public domain"])
-async def test_search_wikimedia_accepts_reusable_licenses(license_name):
-    assert (await _search(_imageinfo(license_name)))["license"] == license_name
+@pytest.mark.parametrize(("license_code", "label"), [("cc0", "CC0"), ("pd", "public domain")])
+async def test_search_wikimedia_accepts_only_condition_free_licenses(license_code, label):
+    assert (await _search(_imageinfo(license_code)))["license"] == label
+
+
+@pytest.mark.parametrize("artist", ["", "x" * 101])
+async def test_missing_or_rambling_author_gives_no_credit_name(artist):
+    assert (await _search(_imageinfo("cc0", artist=artist)))["credit"] is None
 
 
 @pytest.mark.parametrize(
     "imageinfo",
     [
-        _imageinfo("GFDL"),  # needs the full licence text reproduced
-        _imageinfo("Fair use", NonFree={"value": "true"}),
-        _imageinfo("CC BY-SA 4.0", NonFree={"value": "true"}),
-        _imageinfo("CC BY-SA 4.0", mime="image/svg+xml"),  # flags and locator maps
+        # Attribution licences: the X licence grant and attribution slips are the risk
+        _imageinfo("cc-by-sa-4.0"),
+        _imageinfo("cc-by-2.0"),
+        _imageinfo("gfdl"),
         _imageinfo(""),
+        # A free licence code that still asks for attribution
+        _imageinfo("pd", AttributionRequired="true"),
+        _imageinfo("pd", AttributionRequired=""),
+        # Rights beyond copyright that Commons flags
+        _imageinfo("pd", Restrictions="personality"),
+        _imageinfo("cc0", Restrictions="trademarked"),
+        # Local Wikipedia uploads can be public domain in the US only, or non-free
+        _imageinfo("pd", repository="local"),
+        _imageinfo("pd", NonFree="true"),
+        _imageinfo("pd", mime="image/svg+xml"),  # flags and locator maps
     ],
 )
-async def test_search_wikimedia_rejects_unusable_images(imageinfo):
+async def test_search_wikimedia_rejects_files_with_any_condition(imageinfo):
     assert await _search(imageinfo) is None
 
 
@@ -148,22 +180,26 @@ def test_footer_names_the_source_without_a_link_by_default(monkeypatch):
     assert "http" not in _footer(_URL, None)
 
 
-def test_footer_credits_author_licence_and_source(monkeypatch):
+def test_footer_links_the_source_when_asked(monkeypatch):
     monkeypatch.setenv("SOURCE_LINK", "true")
+    assert _footer(_URL, None).startswith("Source: https://en.wikipedia.org/wiki/Testville\n")
+
+
+def test_footer_photo_credit_is_a_courtesy_without_links(monkeypatch):
+    """A link would put the reply on X's link rate; CC0 and public domain need none."""
+    monkeypatch.delenv("SOURCE_LINK", raising=False)
     image = {
         "credit": "Jo Bloggs",
-        "license": "CC BY-SA 4.0",
-        "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+        "license": "public domain",
         "page_url": "https://commons.wikimedia.org/wiki/File:Testville.jpg",
     }
     assert _footer(_URL, image) == (
-        "Source: https://en.wikipedia.org/wiki/Testville\n"
-        "Photo: Jo Bloggs, CC BY-SA 4.0 https://creativecommons.org/licenses/by-sa/4.0,"
-        " via Wikimedia Commons\n"
-        "https://commons.wikimedia.org/wiki/File:Testville.jpg\n\n"
+        "Source: Wikipedia, “Testville”\n"
+        "Photo: Jo Bloggs, public domain, via Wikimedia Commons\n\n"
         "A new remote, harsh or strange place every day. Follow for more."
     )
-    assert _footer(_URL, None).startswith("Source: https://en.wikipedia.org/wiki/Testville\n")
+    assert "http" not in _footer(_URL, image)
+    assert "Photo: CC0, via Wikimedia Commons" in _footer(_URL, {**image, "credit": None, "license": "CC0"})
 
 
 async def test_thread_failure_after_first_post_keeps_what_was_published():

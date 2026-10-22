@@ -30,7 +30,16 @@ A dry run prints each post and stores it with the candidate marked `approved`. T
 
 **Map cards (on by default).** The first post of each thread carries a locator card drawn by `pipeline/map_card.py`: a regional map centred on the place with distance rings and the nearest cities, a small globe, the coordinates, and the nearest major city with its distance. It is drawn from [Natural Earth](https://www.naturalearthdata.com/) coastlines and city data, which are in the public domain, so there is no photograph and no licence to get wrong. The card also gets a text description for screen readers. A place with no coordinates on Wikipedia is posted without one. Set `MAP_CARDS=false` to turn the cards off.
 
-**Photos (off by default).** Setting `POST_IMAGES=true` lets a place with no map card fall back to the article's lead image, when that is a photo under CC BY, CC BY-SA, CC0 or the public domain, with a credit in the closing reply: author, licence with a link, and a link to the file on Wikimedia Commons. This is off because reuse on X is not risk-free: posting grants X a broad licence that a CC licence does not let you pass on, Commons licence labels are occasionally wrong, and a copyright licence does not cover people's image rights, trademarks or, in some countries, recent buildings and artworks.
+**Photos (off by default).** Setting `POST_IMAGES=true` lets a place with no map card fall back to the article's lead image, but only a file that, by Commons' own metadata:
+
+- is hosted on Wikimedia Commons (local Wikipedia uploads can be public domain in the US only, or non-free);
+- is CC0 or public domain, with no attribution required;
+- has no rights warning (personality rights, trademarks and the like);
+- is a JPEG or PNG photo, not marked non-free.
+
+Attribution licences (CC BY, CC BY-SA) are refused. Posting to X grants X a licence to pass the image on, which a CC licence does not let you give, and under the older CC versions any slip in the credit ends the licence at once, which some rights holders charge for. With CC0 and public-domain files neither problem arises. The closing reply still names the photographer when Commons gives a name, as a courtesy and without links, and the database records the file's Commons page.
+
+What this cannot rule out: a file whose Commons licence is wrong (someone uploaded a photo that was not theirs), or a rights issue Commons has not flagged. Both are rare, and the second is mostly about photos of people, but they are why photos stay off by default.
 
 ## Variety
 
@@ -56,7 +65,7 @@ X's API is pay-per-use: you buy credits and each request draws on them. At the t
 Two settings affect cost and appearance, both off by default:
 
 - `SOURCE_LINK=true` makes the closing reply link to the Wikipedia article instead of naming it. That one post is then charged at the link rate.
-- `POST_IMAGES=true` attaches a photo (see "Images").
+- `POST_IMAGES=true` attaches a CC0 or public-domain photo when there is no map card (see "Images").
 
 If a thread fails part-way (a rate limit, say), the posts already published stay up and the place is recorded as posted, so the next run does not post the hook a second time.
 

@@ -23,13 +23,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Research, scoring, content generation, publishing and the scheduler: the pipeline now runs end to end, with a dry-run mode and `--posts N` for previews.
 - Web research runs three focused searches per place concurrently, and `--parallel N` researches and scores several places at once.
 - `scripts/run_local.py` previews posts against an embedded Postgres, with no Docker needed; `--publish` posts to X for real.
-- Optional photo attachment (`POST_IMAGES=true`, off by default) limited to CC BY, CC BY-SA, CC0 and public-domain images, with a full credit line.
+- Optional photo attachment (`POST_IMAGES=true`, off by default).
 - Hand-picked place lists in `config/seed_categories.yaml` for story types Wikipedia's categories don't cover, and `scripts/verify_seed_places.py` to check them.
 - Candidates resume from the step they stopped at; dry-run previews are published by the next real run.
 - Variety rule: story category rotation, and deferral of candidates from the same region as the last post.
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- Photos (`POST_IMAGES=true`) are limited to Wikimedia Commons files that are CC0 or public domain, need no attribution and carry no rights warning; CC BY and CC BY-SA are no longer used. The photo credit no longer contains links, so the closing reply is not charged at X's link rate.
 - The `exclave` story type is now `border_oddity`: its list also holds divided towns and leased territories, and the label is printed on the map card. Existing state is renamed when the schema is applied.
 - The daily workflow is scheduled for 09:17 UTC again, to land at about 14:30 UTC: GitHub starts it roughly five hours late whatever the minute.
 - Pillow is now a dependency (it draws the map cards).

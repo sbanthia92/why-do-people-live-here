@@ -14,10 +14,13 @@ _THUMB_WIDTH = 1600
 _MAX_IMAGE_BYTES = 5 * 1024 * 1024  # X's limit for photos
 _ALLOWED_MIME = {"image/jpeg", "image/png"}
 _MAX_CREDIT_CHARS = 100
-# Licences whose terms a post can meet with a credit line: name the author, name and
-# link the licence, link the source. Others on Commons (GFDL, for one) require
-# reproducing the full licence text, which a post can't do.
-_REUSABLE_LICENSE_PREFIXES = ("cc by", "cc0", "public domain", "pd")
+# Only files with no conditions attached: CC0 or the public domain (Commons' machine
+# licence codes). Attribution licences (CC BY, CC BY-SA) are refused even though a
+# credit line could satisfy them: posting to X grants X a licence to sublicense that
+# a CC licence does not let us pass on, and an attribution slip under the older CC
+# versions ends the licence at once, which some rights holders bill for.
+_NO_CONDITIONS_LICENSES = {"cc0", "pd"}
+_LICENSE_LABELS = {"cc0": "CC0", "pd": "public domain"}
 
 
 def _plain(html: str) -> str:
@@ -28,11 +31,17 @@ def _plain(html: str) -> str:
 async def search_wikimedia(place_name: str, wikipedia_url: str) -> dict | None:
     """Find the article's lead image and its Commons licence details.
 
-    Returns {url, credit, license, license_url, page_url} or None if no suitable image
-    found. Uses WIKIMEDIA_USER_AGENT from env for the API request header.
-    Only photos under a Creative Commons attribution licence, CC0 or the public domain
-    are accepted: non-free (fair-use) files, other licences, and SVGs (usually flags
-    and locator maps) are rejected.
+    Returns {url, credit, license, page_url} or None if no suitable image found.
+    `credit` is the author's name, or None when Commons doesn't give one.
+    Uses WIKIMEDIA_USER_AGENT from env for the API request header.
+
+    A photo is accepted only if all of these hold, as stated by Commons' own metadata:
+    - it is hosted on Wikimedia Commons, not uploaded locally to Wikipedia (local
+      files can be public domain in the US only, or non-free);
+    - its licence is CC0 or public domain, and no attribution is required;
+    - it carries no rights warning (personality rights, trademark, and the like);
+    - it is not marked non-free, and it is a JPEG or PNG (SVGs are usually flags and
+      locator maps).
     """
     title = urllib.parse.unquote(wikipedia_url.rstrip("/").split("/wiki/")[-1]).replace("_", " ")
     async with httpx.AsyncClient(timeout=15.0, headers=_HEADERS) as client:
@@ -72,27 +81,49 @@ async def search_wikimedia(place_name: str, wikipedia_url: str) -> dict | None:
         resp.raise_for_status()
         pages = resp.json().get("query", {}).get("pages", [])
 
-    info = (pages[0].get("imageinfo") or [None])[0] if pages else None
+    page = pages[0] if pages else {}
+    info = (page.get("imageinfo") or [None])[0]
     if not info:
         return None
-    meta = info.get("extmetadata", {})
-    license_name = _plain(meta.get("LicenseShortName", {}).get("value", ""))
-    reusable = license_name.lower().startswith(_REUSABLE_LICENSE_PREFIXES)
-    if info.get("mime") not in _ALLOWED_MIME or "NonFree" in meta or not reusable:
-        console.log(f"[image_sourcer] Lead image for {place_name} not usable ({file_name})")
+    if reason := _unusable_reason(page, info):
+        console.log(f"[image_sourcer] Lead image for {place_name} not used ({file_name}): {reason}")
         return None
 
-    credit = _plain(meta.get("Artist", {}).get("value", "")) or "Unknown author"
-    if len(credit) > _MAX_CREDIT_CHARS:
-        credit = credit[: _MAX_CREDIT_CHARS - 1].rstrip() + "…"
+    meta = info.get("extmetadata", {})
+    license_code = _field(meta, "License").lower()
+    # No credit is owed, but naming the photographer is good manners when Commons has a name
+    credit = _field(meta, "Artist") or None
+    if credit and len(credit) > _MAX_CREDIT_CHARS:
+        credit = None  # a long Artist field is usually a description, not a name
     return {
         "url": info.get("thumburl") or info["url"],
         "credit": credit,
-        "license": license_name,
-        "license_url": _plain(meta.get("LicenseUrl", {}).get("value", "")) or None,
-        # The file's Commons page: the "source" a CC attribution has to point to
+        "license": _LICENSE_LABELS[license_code],
+        # Kept in the database as the record of where the photo came from
         "page_url": info.get("descriptionurl"),
     }
+
+
+def _field(meta: dict, name: str) -> str:
+    return _plain(str(meta.get(name, {}).get("value", "")))
+
+
+def _unusable_reason(page: dict, info: dict) -> str | None:
+    """Why a file must not be posted, or None if it is free of conditions."""
+    meta = info.get("extmetadata", {})
+    if page.get("imagerepository") != "shared":
+        return "not hosted on Wikimedia Commons"
+    if info.get("mime") not in _ALLOWED_MIME:
+        return f"type {info.get('mime')}"
+    if "NonFree" in meta:
+        return "marked non-free"
+    if _field(meta, "License").lower() not in _NO_CONDITIONS_LICENSES:
+        return f"licence {_field(meta, 'LicenseShortName') or 'unknown'} is not CC0 or public domain"
+    if _field(meta, "AttributionRequired").lower() != "false":
+        return "attribution required"
+    if restrictions := _field(meta, "Restrictions"):
+        return f"rights warning: {restrictions}"
+    return None
 
 
 async def validate_image(image_url: str) -> bool:

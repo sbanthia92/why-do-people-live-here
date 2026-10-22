@@ -24,8 +24,8 @@ console = Console()
 def _images_enabled() -> bool:
     """Photos are off unless POST_IMAGES=true.
 
-    Reusing Commons photos on X carries licensing questions (see README), so posts are
-    text-only by default.
+    Only CC0 and public-domain photos are used (see image_sourcer), but a mislabelled
+    file is still possible, so photos stay opt-in (see README).
     """
     return os.getenv("POST_IMAGES", "false").strip().lower() in {"1", "true", "yes"}
 
@@ -193,8 +193,8 @@ FOLLOW_LINE = "A new remote, harsh or strange place every day. Follow for more."
 def _footer(wikipedia_url: str, photo: dict | None) -> str:
     """Closing reply: where the facts (and any photo) came from, and an invitation to follow.
 
-    A photo credit carries what a Creative Commons licence asks for: the author,
-    the licence and a link to it, and a link to the source file.
+    Photos are CC0 or public domain, so no credit is owed; the line is a courtesy and
+    carries no links (a link would put the reply on X's link rate).
     """
     if _source_link_enabled():
         lines = [f"Source: {wikipedia_url}"]
@@ -202,10 +202,8 @@ def _footer(wikipedia_url: str, photo: dict | None) -> str:
         title = urllib.parse.unquote(wikipedia_url.rstrip("/").split("/wiki/")[-1])
         lines = [f"Source: Wikipedia, “{title.replace('_', ' ')}”"]
     if photo:
-        license_part = " ".join(filter(None, [photo["license"], photo.get("license_url")]))
-        lines.append(f"Photo: {photo['credit']}, {license_part}, via Wikimedia Commons")
-        if photo.get("page_url"):
-            lines.append(photo["page_url"])
+        parts = [photo.get("credit"), photo["license"], "via Wikimedia Commons"]
+        lines.append("Photo: " + ", ".join(filter(None, parts)))
     lines += ["", FOLLOW_LINE]
     return "\n".join(lines)
 
@@ -256,7 +254,12 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             "post_text": content["post_text"],
             "thread_parts": content["thread_parts"],
             "image_url": Path(card["path"]).name if card else photo["url"] if photo else None,
-            "image_credit": f"{photo['credit']} ({photo['license']})" if photo else None,
+            # The Commons page records which file was used and the licence it had then
+            "image_credit": " ".join(
+                filter(None, [photo.get("credit"), f"({photo['license']})", photo.get("page_url")])
+            )
+            if photo
+            else None,
             "x_post_id": x_post_id,
             "dry_run": dry_run,
         },

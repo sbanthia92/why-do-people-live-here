@@ -97,3 +97,19 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **Writing style** for docs, prompts and PRs: plain, concrete language; say what something does and why; no hype.
 - **Tests**: Claude, Wikipedia and X are faked; integration tests use a real embedded Postgres. Run `pytest` and `ruff check .` before every PR.
 - **Never post to X from a test or by accident**: anything that publishes goes through `--publish` (with confirmation) or `PUBLISH_TO_X=true`.
+
+## Potential next features
+
+Ideas not built yet, roughly in order of value. Each says why and where it would go. Confirm with the owner before starting one; keep the conventions above (phase branch, PR with "Not yet exercised", CHANGELOG, tests with fakes).
+
+1. **Approve or reject previews from the GitHub issue.** Today a dry-run preview marks the candidate `approved` automatically, so the next real run posts it. Let the owner close a `preview` issue with a `rejected` label (→ `skipped`) or add `approved` (→ eligible), and have the workflow read issue labels before publishing. Touches `.github/workflows/post.yml`, `pipeline/preview.py`, `scheduler/run_pipeline.py`.
+2. **Engagement feedback.** Fetch impressions, likes and reposts for posted threads a few days later and store them in a new table. Use them to report which story categories and hook styles work, and later to weight category rotation. Check X's per-read pricing first. Touches `pipeline/publisher.py`, `db/schema.sql` (new idempotent table), `db/state.py`.
+3. **Duplicate detection by Wikidata ID.** The same place can come in under different titles (redirects, alternate names) or from two seed lists. Resolve each candidate to its Wikidata QID and skip any QID already posted or queued. Touches `pipeline/candidate_selector.py`, `db/schema.sql`.
+4. **Wikidata facts in the brief.** Population, elevation, founding date and climate figures from Wikidata as structured, sourced claims, so the fact check has more to compare numbers against. Touches `pipeline/researcher.py`.
+5. **Candidate pool report.** Count unused candidates per story category each run and warn (in the run log and the preview issue) when one is running low, so seed lists can be topped up before rotation degrades. Touches `scheduler/run_pipeline.py`, `pipeline/candidate_selector.py`.
+6. **Second platform (Bluesky or Mastodon).** Both have free posting APIs and allow links, so the source could be linked there. Needs a small publisher interface so X stays the default and each platform has its own length rules. Touches `pipeline/publisher.py`, `pipeline/xtext.py`, workflow secrets.
+7. **Archive site on GitHub Pages.** A static page built from `posts.jsonl` on the `data` branch: a map of every place posted, with the thread text and sources. Free hosting, gives the X bio one link. New `site/` build step in the workflow.
+8. **Fact-check regression set.** A handful of saved briefs with known-good and known-bad drafts, run against the real model on demand (not in CI), to check the gates and fact check still behave after a model or prompt change. New `evals/` directory and script.
+9. **Fuller cost accounting.** Include Anthropic's per-search fee and X's per-post charge in the run's cost line, and post a weekly total as an issue. Touches `pipeline/llm.py`, `scheduler/run_pipeline.py`.
+10. **Schedule drift guard.** The cron assumes GitHub starts the workflow ~5 hours late. Log the actual start time, and if the delay disappears, wait or trigger from an external scheduler (`repository_dispatch`) so posts still land near 14:30 UTC. Touches `.github/workflows/post.yml`.
+11. **Corrections.** A script to record a reader-reported error against a posted place and post a correction reply under the thread (through `--publish`-style confirmation). New `scripts/correct.py`, a `corrections` table.

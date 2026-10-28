@@ -94,6 +94,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **Commits / PR titles**: Conventional Commits (`feat:`, `fix:`, `docs:`), plain-English subject.
 - **PR bodies**: "What this does", details, "Testing" (test count, ruff, any real API runs with numbers), and **"Not yet exercised"** listing what has not actually been run. Be explicit about anything only tested with fakes.
 - **Update `CHANGELOG.md`** (Keep a Changelog, `[Unreleased]`) and the README for user-visible changes.
+- **Keep `docs/ARCHITECTURE.md` current.** A PR that changes the pipeline stages, the status flow, `db/schema.sql`, the state/deployment setup, or a decision recorded there must update that document in the same PR: the affected section, and the trade-offs entry if a decision changed. List it under "Testing" in the PR body.
 - **Writing style** for docs, prompts and PRs: plain, concrete language; say what something does and why; no hype.
 - **Tests**: Claude, Wikipedia and X are faked; integration tests use a real embedded Postgres. Run `pytest` and `ruff check .` before every PR.
 - **Never post to X from a test or by accident**: anything that publishes goes through `--publish` (with confirmation) or `PUBLISH_TO_X=true`.

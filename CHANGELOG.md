@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- `docs/ARCHITECTURE.md`: components, data flow, state model, and the design decisions and trade-offs behind them.
 - Map cards: the first post of each thread carries a locator card drawn from public-domain Natural Earth data, with a text description for screen readers.
 - Fact check: every draft is compared claim by claim with its research brief, and sent back to the writer if a number, name, date or quotation is not supported. A draft that still fails after two rewrites is not posted.
 - The closing reply ends with an invitation to follow.

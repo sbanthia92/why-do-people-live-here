@@ -26,6 +26,8 @@ A dry run prints each post and stores it with the candidate marked `approved`. T
 4. **Content generation** — Claude writes from the brief alone and decides the length: a single post, or a thread of up to four. Every draft then has to pass two checks. Length is checked in code the way X counts it (links count as 23 characters; some symbols count double). A separate fact check compares each claim in the draft with the brief and reports any number, name, date or quotation the brief does not support. A draft that fails is sent back with the reasons, up to twice; if it still fails, the place is not posted.
 5. **Publishing** — Content is posted to X via the v2 API with a map card on the first post, followed by a reply naming the source article and inviting a follow. Every step is recorded in Postgres.
 
+For the full component breakdown, data model and the trade-offs behind each decision, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Images
 
 **Map cards (on by default).** The first post of each thread carries a locator card drawn by `pipeline/map_card.py`: a regional map centred on the place with distance rings and the nearest cities, a small globe, the coordinates, and the nearest major city with its distance. It is drawn from [Natural Earth](https://www.naturalearthdata.com/) coastlines and city data, which are in the public domain, so there is no photograph and no licence to get wrong. The card also gets a text description for screen readers. A place with no coordinates on Wikipedia is posted without one. Set `MAP_CARDS=false` to turn the cards off.

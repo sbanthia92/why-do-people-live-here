@@ -96,9 +96,16 @@ jobs:
             git -C "$STATE_DIR" rm -rf --quiet . || true
           fi
 
+      # Previews the owner labelled `rejected` are skipped before anything is posted
+      - name: Fetch rejected previews
+        if: steps.mode.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue list --label preview --label rejected --state all --limit 200 --json body > rejected-issues.json
+
       - name: Run pipeline
         if: steps.mode.outputs.run == 'true'
-        run: python scripts/run_local.py --state-dir "$STATE_DIR" --posts "$POSTS" --parallel 1 ${{ steps.mode.outputs.publish_flags }}
+        run: python scripts/run_local.py --state-dir "$STATE_DIR" --posts "$POSTS" --parallel 1 --rejected-issues rejected-issues.json ${{ steps.mode.outputs.publish_flags }}
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
@@ -152,6 +159,7 @@ jobs:
           else
             prefix="Preview"
             gh label create preview --color 0E8A16 --description "Dry-run post preview" --force
+            gh label create rejected --color B60205 --description "Do not post this place" --force
           fi
           for file in "${files[@]}"; do
             cat "$file" >> "$GITHUB_STEP_SUMMARY"

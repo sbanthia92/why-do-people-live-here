@@ -53,7 +53,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **X is pay-per-use**: ~$0.015 per plain post, ~$0.20 per post with a link (Oct 2026). So the closing reply **names** the source article instead of linking (`SOURCE_LINK=false` default), and the photo credit has no links.
 
 ### Publishing behaviour
-- **What was previewed is what gets posted.** A dry-run preview marks the candidate `approved`; the next real run publishes that exact text first.
+- **What was previewed is what gets posted.** A dry-run preview marks the candidate `approved`; the next real run publishes that exact text first. The owner can veto a preview by adding the `rejected` label to its issue (`pipeline/review.py`); the next run marks that place `skipped`. Rejection is a veto, not a required approval.
 - **A thread that fails part-way is still recorded as posted**, so the hook is never published twice.
 - **Candidates resume**: `pending → researched → assessed → approved/posted`, or `skipped`. A failed run continues from where it stopped. Up to five candidates tried per run.
 - **Closing reply** names the source and ends with a follow line ("A new remote, harsh or strange place every day. Follow for more.").
@@ -103,7 +103,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 
 Ideas not built yet, roughly in order of value. Each says why and where it would go. Confirm with the owner before starting one; keep the conventions above (phase branch, PR with "Not yet exercised", CHANGELOG, tests with fakes).
 
-1. **Approve or reject previews from the GitHub issue.** Today a dry-run preview marks the candidate `approved` automatically, so the next real run posts it. Let the owner close a `preview` issue with a `rejected` label (→ `skipped`) or add `approved` (→ eligible), and have the workflow read issue labels before publishing. Touches `.github/workflows/post.yml`, `pipeline/preview.py`, `scheduler/run_pipeline.py`.
+1. **Require approval before posting.** Rejecting a preview with a label is built; this would flip the default so a preview is only eligible once the owner adds an `approved` label. Costs a missed post on days the owner doesn't look, so decide whether that is wanted. Touches `pipeline/review.py`, `.github/workflows/post.yml`, `scheduler/run_pipeline.py`.
 2. **Engagement feedback.** Fetch impressions, likes and reposts for posted threads a few days later and store them in a new table. Use them to report which story categories and hook styles work, and later to weight category rotation. Check X's per-read pricing first. Touches `pipeline/publisher.py`, `db/schema.sql` (new idempotent table), `db/state.py`.
 3. **Duplicate detection by Wikidata ID.** The same place can come in under different titles (redirects, alternate names) or from two seed lists. Resolve each candidate to its Wikidata QID and skip any QID already posted or queued. Touches `pipeline/candidate_selector.py`, `db/schema.sql`.
 4. **Wikidata facts in the brief.** Population, elevation, founding date and climate figures from Wikidata as structured, sourced claims, so the fact check has more to compare numbers against. Touches `pipeline/researcher.py`.

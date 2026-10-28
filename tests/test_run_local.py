@@ -13,6 +13,8 @@ import pytest
 
 pytest.importorskip("pgserver")
 
+from pipeline.review import marker
+
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "run_local.py"
 _spec = importlib.util.spec_from_file_location("run_local", _SCRIPT)
 run_local = importlib.util.module_from_spec(_spec)
@@ -94,3 +96,49 @@ def test_failure_is_annotated_for_github_actions(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     assert _run(monkeypatch, tmp_path, bad_key) == 3
     assert "::error::Anthropic rejected the API key" in capsys.readouterr().out
+
+
+def test_rejected_previews_are_skipped_but_posted_places_are_not(monkeypatch, tmp_path):
+    """A place rejected on its preview issue is not posted; one that already went out stays posted."""
+
+    async def seed(posts, parallel):
+        await _add_place("Alpha", status="approved")
+        await _add_place("Beta", status="approved")
+        await _add_place("Gamma", status="posted")
+        return 1
+
+    async def statuses_after_rejection(posts, parallel):
+        conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+        try:
+            rows = await conn.fetch("SELECT place_name, status FROM candidates ORDER BY id")
+        finally:
+            await conn.close()
+        assert {r["place_name"]: r["status"] for r in rows} == {
+            "Alpha": "skipped",
+            "Beta": "approved",
+            "Gamma": "posted",
+        }
+        return 1
+
+    assert _run(monkeypatch, tmp_path, seed) == 0
+
+    issues = tmp_path.parent / f"{tmp_path.name}-issues.json"
+    issues.write_text(
+        json.dumps(
+            [
+                {"body": f"preview\n{marker('https://example.test/Alpha')}"},
+                {"body": f"preview\n{marker('https://example.test/Gamma')}"},
+            ]
+        )
+    )
+    monkeypatch.setattr(run_local, "run_once", statuses_after_rejection)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["run_local.py", "--state-dir", str(tmp_path), "--posts", "1", "--rejected-issues", str(issues)],
+    )
+    assert run_local.main() == 0
+    # The rejection is saved with the rest of the state
+    lines = (tmp_path / "candidates.jsonl").read_text().splitlines()
+    saved = {json.loads(line)["place_name"]: json.loads(line)["status"] for line in lines}
+    assert saved["Alpha"] == "skipped"

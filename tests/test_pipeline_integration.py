@@ -140,6 +140,8 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert "story:** yes. no road in" in preview
         assert "**Editor's notes to the writer:** Lead with the ferry." in preview
         assert "## Web sources (1)\n\n- [Example](https://example.org/a)" in preview
+        assert "add the `rejected` label to this issue" in preview
+        assert "<!-- candidate:https://en.wikipedia.org/wiki/Alpha_Island -->" in preview
 
         post = await db.fetchrow("SELECT * FROM posts")
         assert post["dry_run"] is True and post["x_post_id"] is None
@@ -165,6 +167,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
     record = (tmp_path / "0001-alpha-island.md").read_text()
     assert "**Posted to X:** https://x.com/i/status/x-2" in record
     assert "Posted to X" not in preview
+    assert "`rejected` label" not in record  # a published post can no longer be rejected
     assert await _statuses(db) == {"Alpha Island": "posted"}
     assert world.researched == ["Alpha Island"]  # the real run reused the stored research
     assert world.written == ["Alpha Island"]  # ...and posted the previewed text, not a new draft

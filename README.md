@@ -95,6 +95,8 @@ The saved state leaves out the full Wikipedia article text, which is only needed
 - Secret: `ANTHROPIC_API_KEY`
 - Variable: `WIKIMEDIA_CONTACT` (an email or URL; Wikimedia asks for a contact in the User-Agent)
 
+**Rejecting a preview.** Each preview issue says how: add the `rejected` label to it. The next run skips that place (it will not be posted, now or later). Places you don't touch are posted as before. A place that has already gone out is not affected.
+
 **Publishing mode.** Set the repository variable `PUBLISH_TO_X` to `true`. This also needs:
 
 - Secrets: `X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_SECRET`

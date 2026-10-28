@@ -36,6 +36,7 @@ import pgserver
 from dotenv import load_dotenv
 
 from db.state import export_state, import_state
+from pipeline.review import reject_candidates, rejected_urls
 from scheduler.run_pipeline import run_once
 
 X_KEYS = ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET")
@@ -49,6 +50,18 @@ async def _apply_schema(database_url: str) -> None:
         await conn.execute((ROOT / "db" / "schema.sql").read_text())
     finally:
         await conn.close()
+
+
+async def _apply_rejections(database_url: str, issues_file: Path) -> None:
+    """Skip the places the owner rejected on their preview issues."""
+    urls = rejected_urls(issues_file.read_text())
+    conn = await asyncpg.connect(database_url)
+    try:
+        names = await reject_candidates(conn, urls)
+    finally:
+        await conn.close()
+    if names:
+        print(f"Skipping {len(names)} place(s) rejected on their preview issue: {', '.join(names)}")
 
 
 def _git(*args: str, cwd: Path = ROOT, check: bool = True) -> subprocess.CompletedProcess:
@@ -101,6 +114,11 @@ def main() -> int:
     )
     parser.add_argument("--publish", action="store_true", help="post to X for real")
     parser.add_argument("--yes", action="store_true", help="with --publish, skip the confirmation")
+    parser.add_argument(
+        "--rejected-issues",
+        type=Path,
+        help="JSON from `gh issue list --json body`: places named there are not posted",
+    )
     where = parser.add_mutually_exclusive_group()
     where.add_argument("--state-dir", type=Path, help="load state from, and save it to, this directory")
     where.add_argument("--shared", action="store_true", help=f"use the repository's '{DATA_BRANCH}' branch")
@@ -143,6 +161,8 @@ def main() -> int:
         # Again, so the schema's migrations also apply to the rows just loaded
         asyncio.run(_apply_schema(database_url))
         print(f"Loaded {loaded} rows of state from {state_dir}.")
+    if args.rejected_issues:
+        asyncio.run(_apply_rejections(database_url, args.rejected_issues))
 
     produced, failure = 0, None
     try:

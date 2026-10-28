@@ -64,6 +64,7 @@ flowchart TD
 | Measure | `pipeline/xtext.py` | text → length as X counts it | none |
 | Illustrate | `pipeline/map_card.py`, `pipeline/image_sourcer.py` | place → PNG card, or a licensed photo | none |
 | Publish | `pipeline/publisher.py`, `pipeline/preview.py` | content → X posts, `posts` row, Markdown preview | none |
+| Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
 | Orchestrate | `scheduler/run_pipeline.py` | counts, `DRY_RUN` → N posts | none |
 | Cost | `pipeline/llm.py` | every request → token and cost tally | n/a |
 
@@ -147,8 +148,9 @@ stateDiagram-v2
     researched --> skipped: a gate says no
     assessed --> approved: dry run completed
     assessed --> posted: real run
-    assessed --> skipped: writing failed
+    assessed --> skipped: writing failed or owner rejected
     approved --> posted: real run reuses previewed text
+    approved --> skipped: owner rejected
     posted --> [*]
     skipped --> [*]
 ```
@@ -199,6 +201,7 @@ Postgres exists only while a run is in progress. Between runs the truth is a set
 - `concurrency: daily-post` so two runs never choose the same candidate or push state over each other.
 - **Preview mode by default.** Without `PUBLISH_TO_X=true` nothing goes to X; each post becomes a GitHub issue labelled `preview`, assigned to the owner, which GitHub emails.
 - **Publishing mode** (`PUBLISH_TO_X=true` plus four X secrets) posts for real and files `posted` issues with the X link.
+- Before the pipeline runs, a step lists the `preview` issues labelled `rejected`. `run_local.py --rejected-issues` marks those places `skipped` (only if still `assessed` or `approved`), using a hidden marker with the Wikipedia URL at the end of each preview file.
 - State is saved with `if: always()`, so a post that went out before an error is not forgotten.
 - A missing `ANTHROPIC_API_KEY` skips the run with a warning; exhausted Anthropic credits end the run with one readable error and state still saved.
 
@@ -285,7 +288,7 @@ Each entry says what was chosen, what it buys, and what it costs.
 
 - **Chosen:** dry runs store content and mark the candidate `approved`; a real run publishes that exact text first.
 - **Why:** previews are not wasted, and what the owner read is what goes out. Preview mode is the default, so nothing posts by accident.
-- **Cost:** `approved` is automatic. The owner cannot reject a preview without editing state by hand, which is why issue-label approval is the top item in "Potential next features". Today preview is notification, not control.
+- **Cost:** `approved` is still automatic, so a preview you ignore is posted by the next real run. The owner can veto by adding the `rejected` label to the issue, but there is no required approval step. Requiring one would stop the account posting on days the owner doesn't look. Rejection is keyed on the Wikipedia URL in a hidden marker, so editing that line out of an issue body disables it, and it only takes effect on the next run.
 
 ### 8.11 Variety by rotation and parking
 
@@ -327,7 +330,7 @@ Each entry says what was chosen, what it buys, and what it costs.
 
 These come from reading the code and are worth deciding on, not necessarily fixing.
 
-1. **Approval is not enforced.** Anything that passes the gates is eligible to post. Owner review depends on the owner reading an issue before the next real run.
+1. **Approval is optional.** Anything that passes the gates is eligible to post unless the owner adds the `rejected` label to its preview issue before the next run (issue #41). Ignoring a preview means it is posted.
 2. **Brief errors are invisible to the fact check** (8.3). The weakest link is the synthesis step and the search results it reads.
 3. **Wikipedia is both the seed and a source tag.** Gate 1 enforces one independent source, not two. A single weak web page is enough.
 4. **`variety_log` is unused for decisions** (8.11).
@@ -346,6 +349,6 @@ These come from reading the code and are worth deciding on, not necessarily fixi
 | A publishing platform | an interface in `pipeline/publisher.py`; its own length rules next to `pipeline/xtext.py` |
 | A new editorial rule | a gate in `pipeline/assessor.py` (a field on `Assessment` and its prompt) |
 | A new brief source | `pipeline/researcher.py`: add its text to the synthesis input and give it a tag |
-| Approval from issues | `.github/workflows/post.yml`, `pipeline/preview.py`, `scheduler/run_pipeline.py` |
+| Required approval (not just veto) | `pipeline/review.py`, `.github/workflows/post.yml`, `scheduler/run_pipeline.py` |
 
 The full list of planned work, with rationale, is in `CLAUDE.md` under "Potential next features".

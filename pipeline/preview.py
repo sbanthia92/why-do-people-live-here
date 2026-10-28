@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 
+from pipeline import review
 from pipeline.xtext import weighted_length
 
 
@@ -82,6 +83,10 @@ async def write_preview(
         sources.setdefault(source["url"], source["source_name"])
     lines += [f"## Web sources ({len(sources)})", ""]
     lines += [f"- [{name}]({url})" for url, name in sources.items()] or ["None found."]
+
+    if not x_post_id:
+        lines += ["", "To stop this place being posted, add the `rejected` label to this issue."]
+    lines += ["", review.marker(row["wikipedia_url"])]
 
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)

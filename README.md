@@ -73,7 +73,9 @@ If a thread fails part-way (a rate limit, say), the posts already published stay
 
 ## What a run costs
 
-Every run ends by printing its Claude token use and an estimated cost. The web searches are the bulk of it, which is why they run on Claude Sonnet while the brief, the editor's gates and the writing stay on Claude Opus. The estimate leaves out Anthropic's per-search fee. X charges separately per post (see "Posting to X").
+Every run ends by printing its Claude token use and an estimated cost. The web searches are the bulk of it, which is why they run on Claude Sonnet while the brief, the editor's gates and the writing stay on Claude Opus.
+
+The cost of each place is also saved: Claude tokens, Anthropic's per-search fee and X's per-post charge, by stage. They are estimates from prices kept in the code. Every Friday the `Weekly cost report` workflow files an issue labelled `cost-report` with the week's spend, the cost per post, where the money went, and a link to each post. Costs are never shown in a post or in a preview. The saved costs are on the `data` branch, so if the repository is public they are public too. You can also run the workflow by hand, or run `python scripts/cost_report.py --state-dir <checkout of the data branch>`.
 
 ## Where the pipeline keeps its memory
 

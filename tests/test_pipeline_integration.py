@@ -16,13 +16,14 @@ import pytest
 pgserver = pytest.importorskip("pgserver")
 
 from db.client import _init_connection
+from pipeline import costs
 from pipeline.assessor import Assessment
 from pipeline.content_generator import FactCheck, Posts
 from pipeline.researcher import ResearchSummary
 from scheduler.run_pipeline import run_once
 
 _SCHEMA = (Path(__file__).parent.parent / "db" / "schema.sql").read_text()
-_TABLES = "variety_log, posts, assessments, research, candidates"
+_TABLES = "costs, variety_log, posts, assessments, research, candidates"
 
 
 @pytest.fixture(scope="module")
@@ -63,6 +64,7 @@ class FakeWorld:
         place = user.split("\n", 1)[0].removeprefix("Place: ")
         if output_format is ResearchSummary:
             self.researched.append(place)
+            costs.add(costs.current_candidate.get(), "brief", "fake-model", 0.01)
             # Hold the "request" open briefly so overlapping research is observable
             self._in_flight += 1
             self.max_in_flight = max(self.max_in_flight, self._in_flight)
@@ -352,3 +354,32 @@ async def test_out_of_credits_still_stops_the_run(db):
         await run_once()
 
     assert await _statuses(db) == {"Alpha Island": "pending"}
+
+
+async def test_costs_are_saved_per_place_with_x_posting_only_when_published(db, monkeypatch):
+    seed = {"island_community": {"places": ["Alpha Island", "Beta Island"]}}
+    regions = {"Alpha Island": "Oceania", "Beta Island": "Asia"}
+    sql = """
+        SELECT c.place_name, k.stage, k.requests, k.usd
+        FROM costs k JOIN candidates c ON c.id = k.candidate_id ORDER BY k.id
+    """
+
+    monkeypatch.setenv("DRY_RUN", "true")
+    with FakeWorld(seed, regions):
+        # Both places are researched at once and kept apart; the preview costs nothing on X
+        assert await run_once(posts=1, parallel=2) == 1
+    rows = await db.fetch(sql)
+    assert {(r["place_name"], r["stage"]) for r in rows} == {
+        ("Alpha Island", "brief"),
+        ("Beta Island", "brief"),
+    }
+
+    monkeypatch.setenv("DRY_RUN", "false")
+    with FakeWorld(seed, regions):
+        assert await run_once() == 1  # publishes the previewed place
+
+    x_rows = [r for r in await db.fetch(sql) if r["stage"] == "x posting"]
+    assert [r["place_name"] for r in x_rows] == ["Alpha Island"]
+    # Three posts, then the closing reply naming the source, at $0.015 each
+    assert x_rows[0]["requests"] == 4
+    assert float(x_rows[0]["usd"]) == pytest.approx(0.06)

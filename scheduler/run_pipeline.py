@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from db.client import create_pool
+from pipeline import costs
 from pipeline.assessor import assess_candidate
 from pipeline.candidate_selector import run_selector
 from pipeline.content_generator import run_content_generation
@@ -87,7 +88,16 @@ async def _prepare(db_pool, candidate: dict) -> None:
     """Research and assess one candidate, leaving it 'assessed' or 'skipped'.
 
     Safe to run for several candidates concurrently: each touches only its own rows.
+    What it cost is saved even when the work fails.
     """
+    with costs.tracking(candidate["id"]):
+        try:
+            await _research_and_assess(db_pool, candidate)
+        finally:
+            await costs.save(db_pool, candidate["id"])
+
+
+async def _research_and_assess(db_pool, candidate: dict) -> None:
     try:
         if candidate["status"] == "pending":
             await run_research(db_pool, candidate["id"])
@@ -150,6 +160,14 @@ async def _publish(db_pool, candidate: dict, dry_run: bool) -> bool:
     An 'approved' candidate was previewed by a dry run: the text that was previewed is
     the text that gets posted, not a fresh draft nobody has seen.
     """
+    with costs.tracking(candidate["id"]):
+        try:
+            return await _write_and_publish(db_pool, candidate, dry_run)
+        finally:
+            await costs.save(db_pool, candidate["id"])
+
+
+async def _write_and_publish(db_pool, candidate: dict, dry_run: bool) -> bool:
     content = await _previewed_content(db_pool, candidate) if not dry_run else None
     if content is None:
         try:

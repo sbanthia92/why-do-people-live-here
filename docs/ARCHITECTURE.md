@@ -318,7 +318,7 @@ Each entry says what was chosen, what it buys, and what it costs.
 
 - **Chosen:** every stage persists before the next starts; up to five candidates are prepared per run; failed runs still save state.
 - **Why:** expensive work (research is most of the money) is never repeated, and a crash after a post never causes a repeat.
-- **Cost:** more states to reason about, and a candidate stuck mid-pipeline for a deterministic reason will be retried every run until it gets skipped. The orchestrator catches `LLMRefusalError` and `ValueError` only; other exceptions abort the run.
+- **Cost:** more states to reason about. While researching or assessing, a temporary API error (5xx, rate limit, timeout, dropped connection, a Wikipedia error) leaves that candidate as it was and the run moves to the next one, so the place is retried on a later run. A request the API rejects outright (a non-credit 400) skips the place, since retrying would fail the same way. Out-of-credits and bad-key errors stop the run, because every later call would fail too. A temporary error while *writing* a post (after the place is ready) still ends the run.
 
 ### 8.16 Scheduling around GitHub's delay
 
@@ -334,7 +334,7 @@ These come from reading the code and are worth deciding on, not necessarily fixi
 2. **Brief errors are invisible to the fact check** (8.3). The weakest link is the synthesis step and the search results it reads.
 3. **Wikipedia is both the seed and a source tag.** Gate 1 enforces one independent source, not two. A single weak web page is enough.
 4. **`variety_log` is unused for decisions** (8.11).
-5. **Narrow exception handling.** A transient API error (other than credit exhaustion) in one candidate's research stops the whole run rather than skipping it. State is still saved, and the next run resumes.
+5. **Writing and publishing errors still end the run.** Temporary API errors during research and assessment are now handled per candidate (issue #45), but the same error while writing a post or fact-checking it is not. State is still saved, and the next run resumes.
 6. **Blocklist and tool versions are pinned by hand** (8.2, 8.5), as is the model price table.
 7. **State rewrite and push race** (8.9) if a local shared run overlaps the workflow.
 8. **Cost reporting is incomplete.** Search fees and X charges are not in the run total.

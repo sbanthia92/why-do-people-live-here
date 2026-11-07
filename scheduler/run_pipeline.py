@@ -4,6 +4,8 @@ import argparse
 import asyncio
 import os
 
+import anthropic
+import httpx
 from dotenv import load_dotenv
 from rich.console import Console
 
@@ -96,6 +98,25 @@ async def _prepare(db_pool, candidate: dict) -> None:
             await assess_candidate(db_pool, candidate["id"])
     except (LLMRefusalError, ValueError) as exc:
         await _skip(db_pool, candidate, exc)
+    except (anthropic.APIError, httpx.HTTPError) as exc:
+        if _is_fatal(exc):
+            raise
+        if isinstance(exc, anthropic.BadRequestError):
+            # This request is rejected outright, so retrying it would fail the same way
+            await _skip(db_pool, candidate, exc)
+        else:
+            # A 5xx, rate limit, timeout or dropped connection: leave the candidate as it
+            # was, so a later run picks it up, and move on to the next one
+            console.log(
+                f"[pipeline] {candidate['place_name']}: temporary error, left for a later run: {exc!r}"
+            )
+
+
+def _is_fatal(exc: Exception) -> bool:
+    """Errors that would hit every later candidate too, so the run should stop."""
+    if isinstance(exc, (anthropic.AuthenticationError, anthropic.PermissionDeniedError)):
+        return True
+    return isinstance(exc, anthropic.BadRequestError) and "credit balance" in exc.message
 
 
 async def _pick_ready(

@@ -66,7 +66,8 @@ flowchart TD
 | Publish | `pipeline/publisher.py`, `pipeline/preview.py` | content → X posts, `posts` row, Markdown preview | none |
 | Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
 | Orchestrate | `scheduler/run_pipeline.py` | counts, `DRY_RUN` → N posts | none |
-| Cost | `pipeline/llm.py` | every request → token and cost tally | n/a |
+| Cost | `pipeline/llm.py`, `pipeline/costs.py` | every request, search and X post → a cost row for its place | n/a |
+| Report | `scripts/cost_report.py` | saved costs → the Friday cost report | none |
 
 Supporting code: `db/` (schema, pool, state export/import), `scripts/` (local runner, credential tools, seed verifier), `assets/` (profile art).
 
@@ -159,7 +160,7 @@ Because every stage writes its result and status before the next begins, a crash
 
 ## 5. Data model
 
-Five tables, defined in `db/schema.sql`:
+Six tables, defined in `db/schema.sql`:
 
 | Table | Holds | Notes |
 |---|---|---|
@@ -168,6 +169,7 @@ Five tables, defined in `db/schema.sql`:
 | `assessments` | both verdicts, both reasons, writer notes, `passed` | |
 | `posts` | text, thread parts (JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
 | `variety_log` | region and story category of each real post | see 8.4 |
+| `costs` | one row per place, stage and model: requests, tokens, dollars | see 8.17 |
 
 Related tables are children of `candidates` with `ON DELETE CASCADE`. `schema.sql` is **idempotent and re-applied on every run**, so a migration is just an extra `UPDATE` or `DROP IF EXISTS` at the bottom (for example the 0–10 score migration and the `exclave` → `border_oddity` rename).
 
@@ -205,7 +207,11 @@ Postgres exists only while a run is in progress. Between runs the truth is a set
 - State is saved with `if: always()`, so a post that went out before an error is not forgotten.
 - A missing `ANTHROPIC_API_KEY` skips the run with a warning; exhausted Anthropic credits end the run with one readable error and state still saved.
 
-### 6.3 CI
+### 6.3 The weekly cost report
+
+`.github/workflows/weekly-cost.yml` runs on Fridays (18:47 UTC) and can be started by hand. It checks out the `data` branch, runs `scripts/cost_report.py` over the last 7 days, and files the result as an issue labelled `cost-report`, assigned to the owner. It needs no secrets and no database: the script reads the JSON-lines files directly. The report gives spend, posts and cost per post, spend by stage, one row per post with a link to it on X, and money spent on places that were not posted.
+
+### 6.4 CI
 
 `ci.yml` runs `ruff`, the test suite on Python 3.11 and 3.12, and a check that no hand-picked place is listed twice. It needs no secrets: Claude, Wikipedia and X are faked, and integration tests use a real embedded Postgres.
 
@@ -213,7 +219,7 @@ Postgres exists only while a run is in progress. Between runs the truth is a set
 
 **LLM access (`pipeline/llm.py`).** Two entry points: `parse` (Opus, structured output validated by a Pydantic model) and `web_search_citations` (Sonnet with the web search tool, returning cited passages). Both share a semaphore of six in-flight requests per event loop, record tokens per model, and enable the server-side fallback beta so a refused request can be retried on a fallback model. A remaining refusal raises `LLMRefusalError`, which the orchestrator turns into a skipped candidate. A search turn that pauses is resumed up to three times.
 
-**Cost visibility.** Each run prints token use and an estimated dollar cost per model. The estimate excludes Anthropic's per-search fee and X's per-post charge.
+**Cost visibility.** Each run prints token use and an estimated dollar cost per model. Separately, every Claude request, web search and X post is added to a ledger keyed by place (`pipeline/costs.py`; a context variable keeps places researched in parallel apart) and saved to the `costs` table when a stage finishes, even if the stage fails. Costs never appear in a post, a reply or a preview issue.
 
 **Wikimedia etiquette.** All requests send a User-Agent with a contact address (or get a 403), and HTTP 429 responses are retried after `Retry-After`, capped at 60 seconds.
 
@@ -320,6 +326,15 @@ Each entry says what was chosen, what it buys, and what it costs.
 - **Why:** expensive work (research is most of the money) is never repeated, and a crash after a post never causes a repeat.
 - **Cost:** more states to reason about. While researching or assessing, a temporary API error (5xx, rate limit, timeout, dropped connection, a Wikipedia error) leaves that candidate as it was and the run moves to the next one, so the place is retried on a later run. A request the API rejects outright (a non-credit 400) skips the place, since retrying would fail the same way. Out-of-credits and bad-key errors stop the run, because every later call would fail too. A temporary error while *writing* a post (after the place is ready) still ends the run.
 
+### 8.17 Cost recorded per place, reported weekly
+
+- **Chosen:** each place has cost rows by stage (web search, search fee, brief, gates, writing, fact check, x posting). The cost of a post is the sum over its place, including research done days earlier. A Friday job reports it.
+- **Why:** per-run cost is misleading. A day with a ready candidate costs a few cents and a day that researches several costs dollars, but the research was for later posts.
+- **Cost:**
+  - The figures are estimates: token prices and the search fee are constants in `pipeline/llm.py`, and X's per-post rates are constants in `pipeline/costs.py`. They go stale when prices change. The X figure assumes every part of a thread was sent, so a thread that stopped early is slightly overstated. X media upload is not counted.
+  - Costs are saved on the `data` branch with the rest of the state. **If the repository is public, so are the costs and the weekly report issue.** Keeping them private needs a private repository for state and reports.
+  - Posts made before tracking began have no cost rows and are listed without a cost.
+
 ### 8.16 Scheduling around GitHub's delay
 
 - **Chosen:** cron at 09:17 UTC to land near 14:30 UTC.
@@ -337,7 +352,7 @@ These come from reading the code and are worth deciding on, not necessarily fixi
 5. **Writing and publishing errors still end the run.** Temporary API errors during research and assessment are now handled per candidate (issue #45), but the same error while writing a post or fact-checking it is not. State is still saved, and the next run resumes.
 6. **Blocklist and tool versions are pinned by hand** (8.2, 8.5), as is the model price table.
 7. **State rewrite and push race** (8.9) if a local shared run overlaps the workflow.
-8. **Cost reporting is incomplete.** Search fees and X charges are not in the run total.
+8. **Cost figures are estimates** (8.17). Prices are hand-kept constants, X media upload is not counted, and the cost data is public if the repository is.
 9. **Single platform, single account.** `publisher.py` talks to X directly.
 
 ## 10. Extension points
@@ -349,6 +364,7 @@ These come from reading the code and are worth deciding on, not necessarily fixi
 | A publishing platform | an interface in `pipeline/publisher.py`; its own length rules next to `pipeline/xtext.py` |
 | A new editorial rule | a gate in `pipeline/assessor.py` (a field on `Assessment` and its prompt) |
 | A new brief source | `pipeline/researcher.py`: add its text to the synthesis input and give it a tag |
+| A new cost category | `pipeline/costs.py` (`add`) at the point the cost happens; the report picks up new stages by name |
 | Required approval (not just veto) | `pipeline/review.py`, `.github/workflows/post.yml`, `scheduler/run_pipeline.py` |
 
 The full list of planned work, with rationale, is in `CLAUDE.md` under "Potential next features".

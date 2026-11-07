@@ -8,6 +8,8 @@ import anthropic
 from pydantic import BaseModel
 from rich.console import Console
 
+from pipeline import costs
+
 console = Console()
 
 MODEL = "claude-opus-5-5"
@@ -18,6 +20,16 @@ SEARCH_MODEL = "claude-sonnet-5-5"
 # US dollars per million tokens (input, output), from Anthropic's price list on
 # 2026-09-25. Only used to print an estimate; update when prices change.
 _PRICES = {MODEL: (4.00, 20.00), SEARCH_MODEL: (2.00, 10.00)}
+# US dollars per web search, from Anthropic's price list. Charged on top of the tokens the
+# search reads. Update when prices change.
+_SEARCH_FEE_USD = 0.01
+# What each structured request is for, named in the cost report
+_STAGES = {
+    "ResearchSummary": "brief",
+    "Assessment": "gates",
+    "Posts": "writing",
+    "FactCheck": "fact check",
+}
 # Lets the API re-run a safety-declined request on Anthropic's recommended fallback
 # model inside the same call, instead of handing us a refusal.
 _BETAS = ["server-side-fallback-2026-07-01"]
@@ -57,7 +69,7 @@ T = TypeVar("T", bound=BaseModel)
 _usage: dict[str, list[int]] = {}
 
 
-def _record_usage(response) -> None:
+def _record_usage(response, stage: str = "other") -> None:
     usage = response.usage
     tokens_in = (
         (usage.input_tokens or 0)
@@ -69,6 +81,24 @@ def _record_usage(response) -> None:
     totals[0] += tokens_in
     totals[1] += usage.output_tokens or 0
     totals[2] += 1
+
+    candidate = costs.current_candidate.get()
+    if candidate is None:
+        return
+    # A fallback model not in the table is priced as the main model
+    price_in, price_out = _PRICES.get(response.model, _PRICES[MODEL])
+    tokens_out = usage.output_tokens or 0
+    costs.add(
+        candidate,
+        stage,
+        response.model,
+        tokens_in / 1e6 * price_in + tokens_out / 1e6 * price_out,
+        input_tokens=tokens_in,
+        output_tokens=tokens_out,
+    )
+    searches = getattr(getattr(usage, "server_tool_use", None), "web_search_requests", 0)
+    if isinstance(searches, int) and searches:
+        costs.add(candidate, "search fee", "web_search", searches * _SEARCH_FEE_USD, requests=searches)
 
 
 def usage_summary() -> str:
@@ -131,7 +161,7 @@ async def parse(*, system: str, user: str, output_format: type[T], effort: str =
             betas=_BETAS,
             fallbacks="default",
         )
-    _record_usage(response)
+    _record_usage(response, _STAGES.get(output_format.__name__, output_format.__name__.lower()))
     if response.stop_reason == "refusal":
         raise LLMRefusalError(f"Claude declined a {output_format.__name__} request")
     if response.parsed_output is None:
@@ -163,7 +193,7 @@ async def web_search_citations(*, system: str, user: str, max_searches: int = 3)
                 betas=_BETAS,
                 fallbacks="default",
             )
-        _record_usage(response)
+        _record_usage(response, "web search")
         if response.stop_reason == "refusal":
             raise LLMRefusalError("Claude declined a web research request")
 

@@ -63,6 +63,7 @@ flowchart TD
 | Write | `pipeline/content_generator.py` | brief + editor notes → list of posts | Opus (writer and fact checker) |
 | Measure | `pipeline/xtext.py` | text → length as X counts it | none |
 | Illustrate | `pipeline/map_card.py`, `pipeline/image_sourcer.py` | place → PNG card, or a licensed photo | none |
+| Image check | `scripts/check_images.py` | recently posted places → which usable photos exist (read-only, run by hand) | none |
 | Publish | `pipeline/publisher.py`, `pipeline/preview.py` | content → X posts, `posts` row, Markdown preview | none |
 | Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
 | Orchestrate | `scheduler/run_pipeline.py` | counts, `DRY_RUN` → N posts | none |
@@ -205,7 +206,11 @@ Postgres exists only while a run is in progress. Between runs the truth is a set
 - State is saved with `if: always()`, so a post that went out before an error is not forgotten.
 - A missing `ANTHROPIC_API_KEY` skips the run with a warning; exhausted Anthropic credits end the run with one readable error and state still saved.
 
-### 6.3 CI
+### 6.3 The image check
+
+`.github/workflows/image-check.yml` is started by hand. It takes the places posted in the last N days from the `data` branch, lists the photos in each place's Wikipedia article and Commons category, applies the same licence rules as `pipeline/image_sourcer.py` (it calls that module's own checks), and prints a summary: photos found, usable, and why the rest were rejected. It also saves small copies of the usable photos as a downloadable artifact so they can be looked at. It posts nothing and changes no state. It exists to measure how many safe photos remote places really have before multi-image posts are designed.
+
+### 6.4 CI
 
 `ci.yml` runs `ruff`, the test suite on Python 3.11 and 3.12, and a check that no hand-picked place is listed twice. It needs no secrets: Claude, Wikipedia and X are faked, and integration tests use a real embedded Postgres.
 

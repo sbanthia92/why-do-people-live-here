@@ -326,6 +326,12 @@ Each entry says what was chosen, what it buys, and what it costs.
 - **Why:** expensive work (research is most of the money) is never repeated, and a crash after a post never causes a repeat.
 - **Cost:** more states to reason about. While researching or assessing, a temporary API error (5xx, rate limit, timeout, dropped connection, a Wikipedia error) leaves that candidate as it was and the run moves to the next one, so the place is retried on a later run. A request the API rejects outright (a non-credit 400) skips the place, since retrying would fail the same way. Out-of-credits and bad-key errors stop the run, because every later call would fail too. A temporary error while *writing* a post (after the place is ready) still ends the run.
 
+### 8.16 Scheduling around GitHub's delay
+
+- **Chosen:** cron at 09:17 UTC to land near 14:30 UTC.
+- **Why:** observed behaviour: the workflow starts about five hours late. 14:30 UTC is daytime for the Americas, Europe and India.
+- **Cost:** this is an assumption about a platform we do not control. If the delay disappears, posts go out five hours early. A drift guard is on the ideas list.
+
 ### 8.17 Cost recorded per place, reported weekly
 
 - **Chosen:** each place has cost rows by stage (web search, search fee, brief, gates, writing, fact check, x posting). The cost of a post is the sum over its place, including research done days earlier. A Friday job reports it.
@@ -334,12 +340,6 @@ Each entry says what was chosen, what it buys, and what it costs.
   - The figures are estimates: token prices and the search fee are constants in `pipeline/llm.py`, and X's per-post rates are constants in `pipeline/costs.py`. They go stale when prices change. The X figure assumes every part of a thread was sent, so a thread that stopped early is slightly overstated. X media upload is not counted.
   - Costs are saved on the `data` branch with the rest of the state. **If the repository is public, so are the costs and the weekly report issue.** Keeping them private needs a private repository for state and reports.
   - Posts made before tracking began have no cost rows and are listed without a cost.
-
-### 8.16 Scheduling around GitHub's delay
-
-- **Chosen:** cron at 09:17 UTC to land near 14:30 UTC.
-- **Why:** observed behaviour: the workflow starts about five hours late. 14:30 UTC is daytime for the Americas, Europe and India.
-- **Cost:** this is an assumption about a platform we do not control. If the delay disappears, posts go out five hours early. A drift guard is on the ideas list.
 
 ## 9. Known gaps and risks
 

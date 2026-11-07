@@ -6,9 +6,11 @@ for real against an embedded Postgres (the `pgserver` dev dependency).
 
 import asyncio
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
 import asyncpg
+import httpx
 import pytest
 
 pgserver = pytest.importorskip("pgserver")
@@ -289,3 +291,64 @@ async def test_candidate_failing_a_gate_is_skipped_and_next_one_posts(db):
     assert len(world.posted) == 1
     assert await db.fetchval("SELECT passed FROM assessments ORDER BY id LIMIT 1") is False
     assert world.written == ["Alpha Island"]  # nothing was written for the skipped place
+
+
+def _search_failing_for(place: str, error: Exception):
+    """A web search that raises `error` for one place and works for the rest."""
+    source = [{"url": "https://example.org/a", "snippet": "s", "source_name": "Example"}]
+
+    async def search(place_name, story_category):
+        if place_name == place:
+            raise error
+        return source
+
+    return patch("pipeline.researcher.fetch_web_sources", new=search)
+
+
+def _bad_request(message: str) -> anthropic.BadRequestError:
+    return anthropic.BadRequestError(message, response=MagicMock(status_code=400), body=None)
+
+
+async def test_temporary_api_error_leaves_candidate_for_a_later_run(db):
+    seed = {"island_community": {"places": ["Flaky Island", "Alpha Island"]}}
+    regions = {"Flaky Island": "Asia", "Alpha Island": "Oceania"}
+    error = anthropic.APIConnectionError(request=httpx.Request("GET", "https://api.test"))
+
+    with FakeWorld(seed, regions) as world:
+        with _search_failing_for("Flaky Island", error):
+            # The error does not end the run: the next candidate is posted instead
+            assert await run_once() == 1
+        assert await _statuses(db) == {"Flaky Island": "pending", "Alpha Island": "posted"}
+
+        # Once the service is back, the next run finishes the candidate it left behind
+        assert await run_once() == 1
+
+    assert await _statuses(db) == {"Flaky Island": "posted", "Alpha Island": "posted"}
+    assert world.written == ["Alpha Island", "Flaky Island"]
+
+
+async def test_rejected_request_skips_the_candidate_and_next_one_posts(db):
+    seed = {"island_community": {"places": ["Odd Island", "Alpha Island"]}}
+    regions = {"Odd Island": "Asia", "Alpha Island": "Oceania"}
+
+    with FakeWorld(seed, regions) as world:
+        with _search_failing_for("Odd Island", _bad_request("prompt is too long")):
+            assert await run_once() == 1
+        assert await run_once() == 0  # the rejected place is not retried
+
+    assert await _statuses(db) == {"Odd Island": "skipped", "Alpha Island": "posted"}
+    assert world.written == ["Alpha Island"]
+
+
+async def test_out_of_credits_still_stops_the_run(db):
+    seed = {"island_community": {"places": ["Alpha Island"]}}
+    out_of_credits = _bad_request("Your credit balance is too low to access the Anthropic API.")
+
+    with (
+        FakeWorld(seed, {"Alpha Island": "Oceania"}),
+        _search_failing_for("Alpha Island", out_of_credits),
+        pytest.raises(anthropic.BadRequestError),
+    ):
+        await run_once()
+
+    assert await _statuses(db) == {"Alpha Island": "pending"}

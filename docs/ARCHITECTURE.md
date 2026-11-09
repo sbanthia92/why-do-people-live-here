@@ -68,8 +68,8 @@ flowchart TD
 | Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
 | Orchestrate | `scheduler/run_pipeline.py` | counts, `DRY_RUN` → N posts | none |
 | Cost | `pipeline/llm.py`, `pipeline/costs.py` | every request, search and X post → a cost row for its place | n/a |
-| Cost privacy | `db/private_costs.py`, `scripts/cost_keys.py` | cost rows → encrypted files only the owner can read | none |
-| Report | `scripts/cost_report.py` | encrypted costs + posts → the cost report, run on the owner's computer | none |
+| Cost store | `db/cost_store.py` | the run's cost rows → a separate private database (`COST_DATABASE_URL`), outside the repository | none |
+| Report | `scripts/cost_report.py` | cost database + posts → the cost report, run on the owner's computer | none |
 
 Supporting code: `db/` (schema, pool, state export/import), `scripts/` (local runner, credential tools, seed verifier), `assets/` (profile art).
 
@@ -171,7 +171,7 @@ Six tables, defined in `db/schema.sql`:
 | `assessments` | both verdicts, both reasons, writer notes, `passed` | |
 | `posts` | text, thread parts (JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
 | `variety_log` | region and story category of each real post | see 8.4 |
-| `costs` | one row per place, stage and model: requests, tokens, dollars. Lives only in the run's database: saved encrypted, never in the clear | see 6.3 and 8.17 |
+| `costs` | one row per place, stage and model: requests, tokens, dollars. Lives only in the run's throwaway database, then is copied to the private cost database. Never saved in the repository | see 6.3 and 8.17 |
 
 Related tables are children of `candidates` with `ON DELETE CASCADE`. `schema.sql` is **idempotent and re-applied on every run**, so a migration is just an extra `UPDATE` or `DROP IF EXISTS` at the bottom (for example the 0–10 score migration and the `exclave` → `border_oddity` rename).
 
@@ -209,13 +209,15 @@ Postgres exists only while a run is in progress. Between runs the truth is a set
 - State is saved with `if: always()`, so a post that went out before an error is not forgotten.
 - A missing `ANTHROPIC_API_KEY` skips the run with a warning; exhausted Anthropic credits end the run with one readable error and state still saved.
 
-### 6.3 Keeping costs private, and the cost report
+### 6.3 Where costs are kept, and the cost report
 
-The repository is public, so anything on the `data` branch, in an issue, or in a run log can be read by anyone. Costs are therefore never saved in the clear:
+The repository is public, so anything in it (the `data` branch, issues, run logs) can be read by anyone. **Nothing about costs is saved in the repository, in the clear or encrypted.**
 
-- **Saving.** Each run's new cost rows are encrypted to the owner's *public* key (`COST_PUBLIC_KEY`, a repository variable) and saved as one file in `costs/` on the `data` branch (`db/private_costs.py`, a libsodium sealed box). The workflow holds only the public key, so it cannot read its own output back. The `costs` table is not part of the normal saved state, so no plaintext copy exists. If `COST_PUBLIC_KEY` is not set, costs are not saved at all.
-- **Reading.** The private key stays on the owner's computer (`scripts/cost_keys.py` makes the pair once and writes the key file readable by its owner only). `python scripts/cost_report.py --pull` fetches the `data` branch, decrypts the cost files and prints the report: spend, posts and cost per post, spend by stage, a row per post with its cost and a link to it on X, and money spent on places that were not posted. Run it whenever you want, for example on Saturday morning.
-- **Logs.** Public Actions logs no longer show dollar estimates: when `GITHUB_ACTIONS` is set, the end-of-run usage summary prints tokens and request counts only.
+- **Saving.** During a run, costs are recorded in the throwaway database like everything else. At the end, `scripts/run_local.py` copies them to a separate hosted Postgres whose address is the `COST_DATABASE_URL` **secret** (`db/cost_store.py`). `costs` is not part of the saved state, so no copy reaches the `data` branch. If the secret is not set, costs are not saved at all. A failure to reach the database never stops the rest of the state being saved, and the log message names only the kind of error, never the address.
+- **Encryption.** The connection must use TLS (`sslmode=require` or stricter; a URL that opts out is refused, and one with no setting gets TLS). Encryption at rest is the database provider's: confirm it in their security documentation, since this repository cannot check it.
+- **Reading.** `python scripts/cost_report.py --pull` runs on the owner's computer with `COST_DATABASE_URL` in `.env`. It reads the costs from the database and the posts from the `data` branch, matches them by Wikipedia URL, and prints the report: spend, posts and cost per post, spend by stage, a row per post with its cost and a link to it on X, and money spent on places that were not posted.
+- **Logs.** Public Actions logs show tokens and request counts, not dollars: when `GITHUB_ACTIONS` is set the usage summary leaves dollars out.
+- **Local runs.** A run without `--state-dir` keeps its costs in the local `.dryrun-pg/` database on the owner's machine and does not copy them to the cost database, so they are not in the report.
 
 ### 6.4 The image check
 
@@ -229,7 +231,7 @@ The repository is public, so anything on the `data` branch, in an issue, or in a
 
 **LLM access (`pipeline/llm.py`).** Two entry points: `parse` (Opus, structured output validated by a Pydantic model) and `web_search_citations` (Sonnet with the web search tool, returning cited passages). Both share a semaphore of six in-flight requests per event loop, record tokens per model, and enable the server-side fallback beta so a refused request can be retried on a fallback model. A remaining refusal raises `LLMRefusalError`, which the orchestrator turns into a skipped candidate. A search turn that pauses is resumed up to three times.
 
-**Cost visibility.** Every Claude request, web search and X post is added to a ledger keyed by place (`pipeline/costs.py`; a context variable keeps places researched in parallel apart) and saved to the `costs` table when a stage finishes, even if the stage fails. Costs never appear in a post, a reply or a preview issue, and are stored encrypted (see 6.3). The end-of-run usage line shows dollars on a local run and tokens only on Actions.
+**Cost visibility.** Every Claude request, web search and X post is added to a ledger keyed by place (`pipeline/costs.py`; a context variable keeps places researched in parallel apart) and saved to the `costs` table when a stage finishes, even if the stage fails. Costs never appear in a post, a reply, a preview issue, the repository or a public log (see 6.3). The end-of-run usage line shows dollars on a local run and tokens only on Actions.
 
 **Wikimedia etiquette.** All requests send a User-Agent with a contact address (or get a 403), and HTTP 429 responses are retried after `Retry-After`, capped at 60 seconds.
 
@@ -342,16 +344,16 @@ Each entry says what was chosen, what it buys, and what it costs.
 - **Why:** observed behaviour: the workflow starts about five hours late. 14:30 UTC is daytime for the Americas, Europe and India.
 - **Cost:** this is an assumption about a platform we do not control. If the delay disappears, posts go out five hours early. A drift guard is on the ideas list.
 
-### 8.17 Cost recorded per place, kept private by encryption
+### 8.17 Cost recorded per place, in a private database outside the repository
 
-- **Chosen:** each place has cost rows by stage (web search, search fee, brief, gates, writing, fact check, x posting). The cost of a post is the sum over its place, including research done days earlier. Rows are encrypted to the owner's public key before they reach the public `data` branch, and read with a private key on the owner's computer.
-- **Why:** per-run cost is misleading: a day with a ready candidate costs a few cents, a day that researches several costs dollars, but the research was for later posts. And the owner does not want spend readable by anyone, while the repository stays public so it can be shown.
-- **Alternatives:** making the repository private (simplest, but it hides the project too); a second private repository holding state and reports (needs a token secret in Actions); an Actions artifact (readable by any signed-in GitHub user on a public repository); a database on the owner's machine (the daily run happens on GitHub, so the data would still have to travel).
+- **Chosen:** each place has cost rows by stage (web search, search fee, brief, gates, writing, fact check, x posting). The cost of a post is the sum over its place, including research done days earlier. Rows are copied at the end of each run to a separate private Postgres, reached through the `COST_DATABASE_URL` secret.
+- **Why:** per-run cost is misleading: a day with a ready candidate costs a few cents, a day that researches several costs dollars, but the research was for later posts. And the owner wants spend completely outside the codebase while the repository stays public so it can be shown.
+- **Alternatives:** encrypting the rows into files on the `data` branch (it was built first, then replaced: the figures were unreadable but still in the repository, a lost key lost the history, and dashboards would have been awkward); making the repository private (simplest, but it hides the project); an Actions artifact (readable by any signed-in GitHub user on a public repository); a database on the owner's machine (the daily run happens on GitHub, so the data would still have to travel).
 - **Cost:**
-  - **A lost private key means the saved costs cannot be read.** Back it up. A new key only protects future runs.
-  - The report is run by hand on the owner's computer; there is no automatic weekly issue (an issue would be public).
-  - Encryption hides the figures, not the fact that a run saved costs: the encrypted files, their names (timestamp and run id) and sizes are public.
-  - Run logs and runs before this change are not rewritten: earlier runs' logs show dollar estimates, and can be deleted from the repository's Actions page.
+  - **One more account to keep:** a hosted database, with whatever limits and inactivity rules its plan has. If it is unreachable at the end of a run, that run's costs are lost: they are not kept anywhere else.
+  - The connection string is a secret with write access to that database. Keep it out of the repository, chat and logs.
+  - Local runs without `--state-dir` do not reach the cost database.
+  - Run logs from before this change still show dollar estimates, and can be deleted from the repository's Actions page.
   - The figures are estimates: token prices and the search fee are constants in `pipeline/llm.py`, and X's per-post rates are constants in `pipeline/costs.py`. They go stale when prices change. The X figure assumes every part of a thread was sent. X media upload is not counted.
   - Posts made before tracking began have no cost rows and are listed without a cost.
 
@@ -366,7 +368,7 @@ These come from reading the code and are worth deciding on, not necessarily fixi
 5. **Writing and publishing errors still end the run.** Temporary API errors during research and assessment are now handled per candidate (issue #45), but the same error while writing a post or fact-checking it is not. State is still saved, and the next run resumes.
 6. **Blocklist and tool versions are pinned by hand** (8.2, 8.5), as is the model price table.
 7. **State rewrite and push race** (8.9) if a local shared run overlaps the workflow.
-8. **Cost figures are estimates** (8.17). Prices are hand-kept constants and X media upload is not counted. The costs are encrypted, so losing the private key loses their history.
+8. **Cost figures are estimates** (8.17). Prices are hand-kept constants and X media upload is not counted. If the cost database is unreachable at the end of a run, that run's costs are lost.
 9. **Single platform, single account.** `publisher.py` talks to X directly.
 
 ## 10. Extension points

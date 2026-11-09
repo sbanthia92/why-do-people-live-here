@@ -16,7 +16,6 @@ dependencies = [
     "python-dotenv",
     "pyyaml",
     "rich",
-    "pynacl",  # keeps the cost data private (db/private_costs.py)
 ]
 
 [project.optional-dependencies]

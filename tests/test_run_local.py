@@ -156,11 +156,24 @@ async def _add_cost_row() -> None:
         await conn.close()
 
 
-def test_costs_are_saved_encrypted_never_in_the_clear(monkeypatch, tmp_path, capsys):
-    from db.private_costs import generate_keys, read_encrypted
+@pytest.fixture(scope="module")
+def cost_db_url(tmp_path_factory) -> str:
+    """A separate server standing in for the private cost database."""
+    import pgserver as _pgserver
 
-    public, private = generate_keys()
-    monkeypatch.setenv("COST_PUBLIC_KEY", public)
+    server = _pgserver.get_server(tmp_path_factory.mktemp("cost-pg"))
+    yield server.get_uri()
+    server.cleanup()
+
+
+def test_costs_go_to_the_cost_database_and_never_into_the_saved_state(
+    monkeypatch, tmp_path, capsys, cost_db_url
+):
+    import asyncio
+
+    from db.cost_store import fetch
+
+    monkeypatch.setenv("COST_DATABASE_URL", cost_db_url)
 
     async def run(posts, parallel):
         await _add_cost_row()
@@ -168,14 +181,16 @@ def test_costs_are_saved_encrypted_never_in_the_clear(monkeypatch, tmp_path, cap
 
     assert _run(monkeypatch, tmp_path, run) == 0
 
-    assert not (tmp_path / "costs.jsonl").exists()
+    # Nothing about costs is in the state that is committed to the repository
+    assert not (tmp_path / "costs").exists() and not (tmp_path / "costs.jsonl").exists()
     assert "0.07" not in "".join(p.read_text() for p in tmp_path.glob("*.jsonl"))
-    assert [r["stage"] for r in read_encrypted(tmp_path, private)] == ["writing"]
-    assert "Saved 1 cost row(s), encrypted." in capsys.readouterr().out
+    (row,) = asyncio.run(fetch(cost_db_url))
+    assert (row["place_name"], row["stage"], float(row["usd"])) == ("Alpha", "writing", 0.07)
+    assert "Saved 1 cost row(s) to the cost database." in capsys.readouterr().out
 
 
-def test_without_a_public_key_costs_are_not_saved_at_all(monkeypatch, tmp_path, capsys):
-    monkeypatch.delenv("COST_PUBLIC_KEY", raising=False)
+def test_without_a_cost_database_costs_are_not_saved_anywhere(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("COST_DATABASE_URL", raising=False)
 
     async def run(posts, parallel):
         await _add_cost_row()
@@ -183,6 +198,22 @@ def test_without_a_public_key_costs_are_not_saved_at_all(monkeypatch, tmp_path, 
 
     assert _run(monkeypatch, tmp_path, run) == 0
 
-    assert not (tmp_path / "costs").exists()
-    assert not (tmp_path / "costs.jsonl").exists()
-    assert "COST_PUBLIC_KEY is not set" in capsys.readouterr().out
+    assert not (tmp_path / "costs").exists() and not (tmp_path / "costs.jsonl").exists()
+    assert "COST_DATABASE_URL is not set" in capsys.readouterr().out
+
+
+def test_an_unreachable_cost_database_does_not_stop_the_state_being_saved_or_leak_its_address(
+    monkeypatch, tmp_path, capsys
+):
+    monkeypatch.setenv("COST_DATABASE_URL", "postgresql://someuser:s3cret@127.0.0.1:1/costs")
+
+    async def run(posts, parallel):
+        await _add_cost_row()
+        return 1
+
+    assert _run(monkeypatch, tmp_path, run) == 0
+
+    output = capsys.readouterr().out
+    assert "Could not save this run's costs to the cost database" in output
+    assert "s3cret" not in output and "someuser" not in output
+    assert _places(tmp_path) == ["Alpha"]  # the rest of the state was still saved

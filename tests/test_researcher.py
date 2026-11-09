@@ -99,6 +99,18 @@ async def test_web_search_runs_on_the_search_model_and_blocks_wikipedia_mirrors(
     assert {"wikipedia.org", "kiddle.co", "grokipedia.com"} <= set(blocked)
 
 
+def test_usage_summary_can_leave_dollars_out_for_public_logs(monkeypatch):
+    from pipeline import llm
+
+    monkeypatch.setattr(llm, "_usage", {})
+    llm._record_usage(_response(llm.MODEL, 500_000, 50_000))
+
+    summary = llm.usage_summary(show_cost=False)
+
+    assert "500,000 tokens in" in summary
+    assert "$" not in summary
+
+
 def test_usage_summary_totals_by_model(monkeypatch):
     from pipeline import llm
 

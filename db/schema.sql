@@ -53,6 +53,19 @@ CREATE TABLE IF NOT EXISTS variety_log (
     story_category TEXT NOT NULL
 );
 
+-- What each place costs, one row per stage and model. A place's cost can span several runs.
+CREATE TABLE IF NOT EXISTS costs (
+    id            SERIAL PRIMARY KEY,
+    candidate_id  INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
+    stage         TEXT NOT NULL,     -- web search | search fee | brief | gates | writing | fact check | x posting
+    model         TEXT,
+    requests      INTEGER NOT NULL DEFAULT 0,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    usd           NUMERIC(10, 4) NOT NULL,
+    recorded_at   TIMESTAMPTZ DEFAULT now()
+);
+
 -- Migration from the earlier 0-10 scoring, which the two yes/no gates replaced.
 -- Safe to re-run: candidates that passed the old scoring count as assessed.
 DROP TABLE IF EXISTS scores;

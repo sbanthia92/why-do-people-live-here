@@ -12,6 +12,7 @@ import tweepy
 from rich.console import Console
 from rich.panel import Panel
 
+from pipeline import costs
 from pipeline.candidate_selector import _HEADERS
 from pipeline.image_sourcer import get_image_for_candidate
 from pipeline.map_card import map_card_for_candidate
@@ -234,6 +235,14 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
     x_post_id = await post_to_x(
         content["post_text"], replies, image_source, dry_run=dry_run, alt_text=alt_text
     )
+    if x_post_id:
+        # The closing reply is the only post that can carry a link. If a thread stopped
+        # early some of these were never sent, so this can slightly overstate.
+        posts = 1 + len(replies)
+        link = costs.X_LINK_POST_USD if _source_link_enabled() else costs.X_POST_USD
+        costs.add(
+            candidate_id, "x posting", "x-api", (posts - 1) * costs.X_POST_USD + link, requests=posts
+        )
     # Leave a Markdown copy of what was previewed or posted (the daily workflow turns
     # these into notifications).
     if preview_dir := os.getenv("PREVIEW_DIR"):

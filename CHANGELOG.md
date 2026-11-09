@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Cost per place: every Claude request, web search and X post is saved against its place. Because the repository is public, costs are encrypted to your public key (`COST_PUBLIC_KEY`) before they reach the `data` branch and are read on your own computer with `python scripts/cost_report.py --pull`, which prints spend, cost per post, spend by stage, a link to each post, and spend on places that were not posted. `python scripts/cost_keys.py` makes the key pair. Costs are never shown in a post, and public Actions logs no longer show dollar estimates.
 - Image check: a hand-started workflow (`Image check`) and `scripts/check_images.py` that list the freely usable photos available for recently posted places, with the reasons others were rejected, and attach small copies of the usable ones. Read-only: it posts nothing.
 - Reject a previewed place from its GitHub issue: add the `rejected` label to a `preview` issue and the next run marks that place `skipped` instead of posting it. Places that were already posted are not affected.
 - `docs/ARCHITECTURE.md`: components, data flow, state model, and the design decisions and trade-offs behind them.

@@ -75,7 +75,16 @@ If a thread fails part-way (a rate limit, say), the posts already published stay
 
 ## What a run costs
 
-Every run ends by printing its Claude token use and an estimated cost. The web searches are the bulk of it, which is why they run on Claude Sonnet while the brief, the editor's gates and the writing stay on Claude Opus. The estimate leaves out Anthropic's per-search fee. X charges separately per post (see "Posting to X").
+Every run ends by printing its Claude token use and an estimated cost. The web searches are the bulk of it, which is why they run on Claude Sonnet while the brief, the editor's gates and the writing stay on Claude Opus.
+
+The cost of each place is also saved: Claude tokens, Anthropic's per-search fee and X's per-post charge, by stage. They are estimates from prices kept in the code. Costs are never shown in a post or a preview, and because this repository is public they are **encrypted** before they are saved on the `data` branch, so only you can read them. Public Actions logs show tokens, not dollars.
+
+One-time setup, on your own computer:
+
+1. `python scripts/cost_keys.py` writes a private key file (back it up) and prints a public key.
+2. Add that public key as a repository variable named `COST_PUBLIC_KEY` (Settings, Secrets and variables, Actions, Variables). Until you do, costs are not saved.
+
+Then, whenever you want the report, run `python scripts/cost_report.py --pull`. It fetches the latest saved state, decrypts the costs and prints spend for the last 7 days, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. If you lose the private key, the costs saved with it cannot be read.
 
 ## Where the pipeline keeps its memory
 

@@ -24,6 +24,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -35,6 +36,7 @@ import asyncpg
 import pgserver
 from dotenv import load_dotenv
 
+from db.private_costs import export_encrypted
 from db.state import export_state, import_state
 from pipeline.review import reject_candidates, rejected_urls
 from scheduler.run_pipeline import run_once
@@ -91,6 +93,27 @@ def _push_shared_state(message: str) -> None:
     _git("commit", "-m", message, cwd=SHARED_DIR)
     _git("push", "origin", f"HEAD:{DATA_BRANCH}", cwd=SHARED_DIR)
     print(f"Saved state to the '{DATA_BRANCH}' branch.")
+
+
+def _save_costs(database_url: str, state_dir: Path) -> None:
+    """Save this run's costs, encrypted so they stay private even on a public repository.
+
+    Without COST_PUBLIC_KEY nothing is saved: costs are never written in the clear.
+    A problem here must not stop the rest of the state from being saved.
+    """
+    key = os.getenv("COST_PUBLIC_KEY", "").strip()
+    if not key:
+        print("COST_PUBLIC_KEY is not set, so this run's costs were not saved.")
+        return
+    name = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + (
+        f"-{os.environ['GITHUB_RUN_ID']}" if os.getenv("GITHUB_RUN_ID") else ""
+    )
+    try:
+        saved = asyncio.run(export_encrypted(database_url, state_dir, key, name))
+    except Exception as exc:  # noqa: BLE001
+        print(f"Could not save this run's costs: {exc!r}")
+        return
+    print(f"Saved {saved} cost row(s), encrypted.")
 
 
 def _explain(exc: anthropic.APIStatusError) -> str:
@@ -174,6 +197,7 @@ def main() -> int:
         # forgetting it would mean posting the same place again.
         if state_dir:
             asyncio.run(export_state(database_url, state_dir))
+            _save_costs(database_url, state_dir)
             if args.shared:
                 _push_shared_state(f"State after {'publishing' if args.publish else 'previewing'} {produced} post(s)")
         server.cleanup()

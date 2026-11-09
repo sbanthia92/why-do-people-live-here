@@ -260,7 +260,8 @@ async def run_once(posts: int = 1, parallel: int = 1) -> int:
             produced += 1
     finally:
         await db_pool.close()
-        console.print(usage_summary())
+        # Actions logs are public on a public repository, so keep dollars out of them
+        console.print(usage_summary(show_cost=not os.getenv("GITHUB_ACTIONS")))
     return produced
 
 

@@ -142,3 +142,47 @@ def test_rejected_previews_are_skipped_but_posted_places_are_not(monkeypatch, tm
     lines = (tmp_path / "candidates.jsonl").read_text().splitlines()
     saved = {json.loads(line)["place_name"]: json.loads(line)["status"] for line in lines}
     assert saved["Alpha"] == "skipped"
+
+
+async def _add_cost_row() -> None:
+    await _add_place("Alpha", status="posted")
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        await conn.execute(
+            "INSERT INTO costs (candidate_id, stage, model, requests, usd)"
+            " VALUES (1, 'writing', 'm', 1, 0.07)"
+        )
+    finally:
+        await conn.close()
+
+
+def test_costs_are_saved_encrypted_never_in_the_clear(monkeypatch, tmp_path, capsys):
+    from db.private_costs import generate_keys, read_encrypted
+
+    public, private = generate_keys()
+    monkeypatch.setenv("COST_PUBLIC_KEY", public)
+
+    async def run(posts, parallel):
+        await _add_cost_row()
+        return 1
+
+    assert _run(monkeypatch, tmp_path, run) == 0
+
+    assert not (tmp_path / "costs.jsonl").exists()
+    assert "0.07" not in "".join(p.read_text() for p in tmp_path.glob("*.jsonl"))
+    assert [r["stage"] for r in read_encrypted(tmp_path, private)] == ["writing"]
+    assert "Saved 1 cost row(s), encrypted." in capsys.readouterr().out
+
+
+def test_without_a_public_key_costs_are_not_saved_at_all(monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("COST_PUBLIC_KEY", raising=False)
+
+    async def run(posts, parallel):
+        await _add_cost_row()
+        return 1
+
+    assert _run(monkeypatch, tmp_path, run) == 0
+
+    assert not (tmp_path / "costs").exists()
+    assert not (tmp_path / "costs.jsonl").exists()
+    assert "COST_PUBLIC_KEY is not set" in capsys.readouterr().out

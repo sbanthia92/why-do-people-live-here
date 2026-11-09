@@ -12,7 +12,9 @@ from pathlib import Path
 import asyncpg
 
 # In dependency order: a table comes after the tables its rows refer to
-TABLES = ("candidates", "research", "assessments", "posts", "variety_log", "costs")
+TABLES = ("candidates", "research", "assessments", "posts", "variety_log")
+# The `costs` table is not saved here either: it would be readable by anyone if the repository is
+# public. See db/private_costs.py.
 # Left out of the saved state. The article text is only needed while a place is being
 # researched, it can be fetched again, and it is most of the database's bulk.
 _OMITTED_COLUMNS = {"research": ("wikipedia_extract",)}

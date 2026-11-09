@@ -101,11 +101,12 @@ def _record_usage(response, stage: str = "other") -> None:
         costs.add(candidate, "search fee", "web_search", searches * _SEARCH_FEE_USD, requests=searches)
 
 
-def usage_summary() -> str:
+def usage_summary(show_cost: bool = True) -> str:
     """What this process has spent on Claude so far, as a few printable lines.
 
     The dollar figure is an estimate from token counts. It leaves out the per-search
     fee Anthropic charges for web search, and any model not in the price table.
+    `show_cost=False` leaves dollars out, for logs that other people can read.
     """
     if not _usage:
         return "Claude usage: no requests made."
@@ -116,8 +117,11 @@ def usage_summary() -> str:
             price_in, price_out = _PRICES[model]
             cost = tokens_in / 1e6 * price_in + tokens_out / 1e6 * price_out
             total += cost
-            line += f", about ${cost:.2f}"
+            if show_cost:
+                line += f", about ${cost:.2f}"
         lines.append(line)
+    if not show_cost:
+        return "\n".join(["Claude usage:", *lines])
     return "\n".join([f"Claude usage (estimated ${total:.2f}, before web search fees):", *lines])
 
 

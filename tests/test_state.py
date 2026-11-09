@@ -62,12 +62,6 @@ async def _populate(db) -> None:
         """
     )
     await db.execute(
-        """
-        INSERT INTO costs (candidate_id, stage, model, requests, input_tokens, output_tokens, usd)
-        VALUES (1, 'writing', 'claude-opus-5-5', 2, 7593, 2229, 0.0745)
-        """
-    )
-    await db.execute(
         "INSERT INTO variety_log (region, story_category) VALUES ('Asia', 'colonial_resettlement')"
     )
 
@@ -88,7 +82,7 @@ async def test_state_round_trips_through_files(db, database_url, tmp_path):
     loaded = await import_state(database_url, tmp_path)
 
     after = await _snapshot(db)
-    assert loaded == 7
+    assert loaded == 6
     # The article text is deliberately not saved; everything else comes back exactly
     assert after["research"][0].pop("wikipedia_extract") is None
     before["research"][0].pop("wikipedia_extract")

@@ -1,16 +1,26 @@
-"""Print a Markdown cost report for the last week, from the saved state files.
+"""Print a Markdown cost report for the last week. Run it on your own computer.
 
-Reads the JSON-lines files the daily run keeps on the `data` branch. Needs no database.
-A post's cost is everything spent on its place, including research done on earlier days.
+Reads the posts the daily run keeps on the `data` branch, and the costs it saved there
+encrypted (see db/private_costs.py), which only your private key can open. Costs never leave
+your computer in the clear. A post's cost is everything spent on its place, including
+research done on earlier days.
 
-Usage:  python scripts/cost_report.py --state-dir DIR [--days 7]
+Usage:  python scripts/cost_report.py --pull [--days 7]
+        python scripts/cost_report.py --state-dir DIR [--key-file PATH] [--days 7]
 """
 
 import argparse
 import json
+import subprocess
+import sys
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from db.private_costs import DEFAULT_KEY_FILE, read_encrypted
 
 
 def _rows(state_dir: Path, table: str) -> list[dict]:
@@ -26,11 +36,13 @@ def _usd(amount: float) -> str:
     return f"${amount:,.2f}"
 
 
-def build_report(state_dir: Path, now: datetime, days: int = 7) -> str:
-    """The report for the `days` days before `now`, as Markdown whose first line is a title."""
+def build_report(state_dir: Path, now: datetime, days: int, costs: list[dict]) -> str:
+    """The report for the `days` days before `now`, as Markdown whose first line is a title.
+
+    `costs` are the decrypted cost rows; posts and places come from the state files.
+    """
     start = now - timedelta(days=days)
     candidates = {c["id"]: c for c in _rows(state_dir, "candidates")}
-    costs = _rows(state_dir, "costs")
     posts = [
         p
         for p in _rows(state_dir, "posts")
@@ -47,7 +59,7 @@ def build_report(state_dir: Path, now: datetime, days: int = 7) -> str:
     spent = sum(by_stage.values())
 
     title_range = f"{start:%-d %b} – {now:%-d %b %Y}"
-    lines = [f"# Weekly cost report: {title_range}", ""]
+    lines = [f"# Cost report: {title_range}", ""]
     if not costs:
         note = "No costs have been recorded yet. They are saved from the first run after cost tracking was added."
         return "\n".join([*lines, note, ""])
@@ -104,12 +116,34 @@ def build_report(state_dir: Path, now: datetime, days: int = 7) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _pull(state_dir: Path) -> None:
+    """Make `state_dir` a checkout of the latest `data` branch."""
+    subprocess.run(["git", "fetch", "origin", "data"], cwd=ROOT, check=True)
+    if state_dir.exists():
+        subprocess.run(["git", "checkout", "--detach", "origin/data"], cwd=state_dir, check=True)
+    else:
+        subprocess.run(
+            ["git", "worktree", "add", "--detach", str(state_dir), "origin/data"],
+            cwd=ROOT,
+            check=True,
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--state-dir", type=Path, required=True)
+    parser.add_argument("--state-dir", type=Path, default=ROOT / ".state")
+    parser.add_argument("--pull", action="store_true", help="fetch the latest data branch first")
+    parser.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
     parser.add_argument("--days", type=int, default=7)
     args = parser.parse_args()
-    print(build_report(args.state_dir, datetime.now(UTC), args.days), end="")
+
+    if not args.key_file.exists():
+        print(f"No private key at {args.key_file}. Make one with: python scripts/cost_keys.py")
+        return 2
+    if args.pull:
+        _pull(args.state_dir)
+    costs = read_encrypted(args.state_dir, args.key_file.read_text().strip())
+    print(build_report(args.state_dir, datetime.now(UTC), args.days, costs), end="")
     return 0
 
 

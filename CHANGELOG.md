@@ -7,6 +7,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - Cost per place: every Claude request, web search and X post is saved against its place in a new `costs` table (kept on the `data` branch). A weekly job (Fridays) files a cost report as an issue: spend, cost per post, spend by stage, a link to each post, and spend on places that were not posted. Costs are never shown in a post.
+- Image check: a hand-started workflow (`Image check`) and `scripts/check_images.py` that list the freely usable photos available for recently posted places, with the reasons others were rejected, and attach small copies of the usable ones. Read-only: it posts nothing.
 - Reject a previewed place from its GitHub issue: add the `rejected` label to a `preview` issue and the next run marks that place `skipped` instead of posting it. Places that were already posted are not affected.
 - `docs/ARCHITECTURE.md`: components, data flow, state model, and the design decisions and trade-offs behind them.
 - Map cards: the first post of each thread carries a locator card drawn from public-domain Natural Earth data, with a text description for screen readers.

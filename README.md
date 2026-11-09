@@ -39,6 +39,8 @@ For the full component breakdown, data model and the trade-offs behind each deci
 - has no rights warning (personality rights, trademarks and the like);
 - is a JPEG or PNG photo, not marked non-free.
 
+To see how many safe photos your recent places actually have, start the `Image check` workflow from the Actions tab (or run `python scripts/check_images.py --state-dir <checkout of the data branch>`). It uses the same rules as above, lists each place's usable photos and the reasons the rest were rejected, and attaches small copies of the usable ones as a downloadable artifact. It posts nothing.
+
 Attribution licences (CC BY, CC BY-SA) are refused. Posting to X grants X a licence to pass the image on, which a CC licence does not let you give, and under the older CC versions any slip in the credit ends the licence at once, which some rights holders charge for. With CC0 and public-domain files neither problem arises. The closing reply still names the photographer when Commons gives a name, as a courtesy and without links, and the database records the file's Commons page.
 
 What this cannot rule out: a file whose Commons licence is wrong (someone uploaded a photo that was not theirs), or a rights issue Commons has not flagged. Both are rare, and the second is mostly about photos of people, but they are why photos stay off by default.

@@ -1,0 +1,57 @@
+name: Image check
+
+# Read-only. Lists the freely usable photos that exist for recently posted places, and
+# attaches small copies of them so they can be looked at. Posts nothing.
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "Check places posted in the last this-many days"
+        type: number
+        default: 7
+      max_images:
+        description: "Usable photos saved per place"
+        type: number
+        default: 6
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      # Wikimedia asks for a real contact (email or URL) in the User-Agent.
+      WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT || format('https://github.com/{0}', github.repository) }})
+      STATE_DIR: state
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install .
+
+      # The places come from the pipeline's saved state on the `data` branch
+      - name: Check out state
+        run: |
+          git fetch --depth 1 origin data
+          git worktree add "$STATE_DIR" FETCH_HEAD
+
+      - name: Check images
+        run: |
+          python scripts/check_images.py --state-dir "$STATE_DIR" --days "${{ inputs.days }}" \
+            --max-images "${{ inputs.max_images }}" --out-dir image-check | tee image-check.md
+          cat image-check.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the photos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-check
+          path: image-check/
+          if-no-files-found: ignore
+          retention-days: 7

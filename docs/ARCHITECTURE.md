@@ -63,7 +63,7 @@ flowchart TD
 | Write | `pipeline/content_generator.py` | brief + editor notes → list of posts | Opus (writer and fact checker) |
 | Measure | `pipeline/xtext.py` | text → length as X counts it | none |
 | Illustrate | `pipeline/map_card.py`, `pipeline/image_sourcer.py` | place → PNG card, or a licensed photo | none |
-| Image check | `scripts/check_images.py` | recently posted places → which usable photos exist (read-only, run by hand) | none |
+| Image check | `scripts/check_images.py`, `pipeline/photo_filter.py` | recently posted places → which photos pass the licence, size, shape and AI checks (read-only, run by hand) | Sonnet (vision) |
 | Publish | `pipeline/publisher.py`, `pipeline/preview.py` | content → X posts, `posts` row, Markdown preview | none |
 | Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
 | Orchestrate | `scheduler/run_pipeline.py` | counts, `DRY_RUN` → N posts | none |
@@ -222,7 +222,14 @@ The repository is public, so anything in it (the `data` branch, issues, run logs
 
 ### 6.4 The image check
 
-`.github/workflows/image-check.yml` is started by hand. It takes the places posted in the last N days from the `data` branch, lists the photos in each place's Wikipedia article and Commons category, applies the same licence rules as `pipeline/image_sourcer.py` (it calls that module's own checks), and prints a summary: photos found, usable, and why the rest were rejected. It also saves small copies of the usable photos as a downloadable artifact so they can be looked at. It posts nothing and changes no state. It exists to measure how many safe photos remote places really have before multi-image posts are designed.
+`.github/workflows/image-check.yml` is started by hand. It takes the places posted in the last N days from the `data` branch and, for each, lists the photos in the Wikipedia article and in the Commons category **named exactly like the article** (a shorter name can be a different place: a "Livingston" category held a Scottish hospital). A photo is accepted only if it passes, in order:
+
+1. **Licence:** the same rules as `pipeline/image_sourcer.py` (it calls that module's own check): hosted on Commons, CC0 or public domain, no attribution, no rights warning, JPEG or PNG.
+2. **Size and shape** (`pipeline/photo_filter.py`): at least 800x500 pixels, and a width to height ratio between 0.6 and 2.2, so thin strips (X crops them badly) and tiny files fail. No map location is required, since most photos have none.
+3. **Name:** a file or description that says flag, coat of arms, map, logo, icon or similar (including Ukrainian, Spanish, German and other spellings) is dropped without cost.
+4. **AI check:** Claude Sonnet looks at the photo with its name, description and where it came from, and says whether it is a real photograph and whether it shows this place (yes, no or unsure; only yes is accepted). It exists because a licence check cannot tell that an article's only photo is of another town. At most 12 photos per place are sent. Without `ANTHROPIC_API_KEY`, or with `--no-ai`, this step is skipped and the report says so.
+
+It prints the accepted photos with what each shows, why the rest were rejected, and token counts (never dollars: the log is public). Small copies of the accepted photos are attached as a downloadable artifact. It posts nothing and changes no state. The same checks are meant to be reused when posts can carry several photos; production posts do not use them yet, and photos stay off by default.
 
 ### 6.5 CI
 

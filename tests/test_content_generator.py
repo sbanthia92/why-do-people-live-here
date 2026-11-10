@@ -117,17 +117,25 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
         ]
     )
 
-    with patch("pipeline.content_generator.write", new=generate):
+    facts = [{"figure": "96", "caption": "villages"}] * 3
+    select = AsyncMock(side_effect=[None, facts])
+    with (
+        patch("pipeline.content_generator.write", new=generate),
+        patch("pipeline.facts_card.select_facts", new=select),
+    ):
         assert await run_content_generation(pool, 1) == {
             "post_text": "One post.",
             "thread_parts": None,
             "sources": [],
+            "facts": None,
         }
         assert await run_content_generation(pool, 1) == {
             "post_text": "Hook.",
             "thread_parts": ["2/ More.", "3/ End."],
             "sources": ["Example", "Britannica"],
+            "facts": facts,
         }
+    assert select.call_args.args == ("Testville", "Brief [W].")
     assert generate.call_args.args == ("Testville", "Brief [W].", "Lead with the ferry.")
 
 
@@ -152,3 +160,17 @@ def test_the_prompts_ask_for_scope_and_the_check_rejects_widened_claims() -> Non
     assert "area or year" in _SYSTEM and "web sources whose" in _SYSTEM.replace("\n", " ")
     assert "widens the scope" in _FACT_CHECK_SYSTEM
     assert "stripped of the area or year" in _FACT_CHECK_SYSTEM.replace("\n", " ")
+
+
+async def test_a_failing_facts_step_costs_the_card_not_the_post(monkeypatch) -> None:
+    from pipeline.content_generator import _card_facts
+    from pipeline.llm import LLMRefusalError
+
+    with patch("pipeline.facts_card.select_facts", new=AsyncMock(side_effect=LLMRefusalError("no"))):
+        assert await _card_facts("Testville", "Brief.") is None
+
+    monkeypatch.setenv("FACTS_CARD", "false")
+    select = AsyncMock()
+    with patch("pipeline.facts_card.select_facts", new=select):
+        assert await _card_facts("Testville", "Brief.") is None
+    select.assert_not_called()  # switched off: no model call, no cost

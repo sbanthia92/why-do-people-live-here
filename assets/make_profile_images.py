@@ -17,7 +17,20 @@ sys.path.insert(0, str(HERE.parent))
 
 from PIL import Image, ImageDraw
 
-from pipeline.map_card import CREAM, LAND, MUTED, NAVY, ORANGE, RING, SEA, _data, _font, _Projection
+from pipeline.map_card import (
+    CREAM,
+    LAND,
+    MUTED,
+    NAVY,
+    ORANGE,
+    RED,
+    RING,
+    SEA,
+    YELLOW,
+    _data,
+    _font,
+    _Projection,
+)
 
 # Shapes are drawn large and scaled down, which smooths their edges
 SCALE = 4
@@ -42,7 +55,7 @@ def _pin(draw: ImageDraw.ImageDraw, cx: float, top: float, size: float, outline:
 
     if outline:
         shape(outline, NAVY)
-    shape(0, ORANGE)
+    shape(0, RED)
     draw.text((cx, cy - r * 0.04), "?", font=_font(int(r * 1.45), bold=True), fill=NAVY, anchor="mm")
 
 
@@ -85,15 +98,15 @@ def banner(width: int = 1500, height: int = 500) -> Image.Image:
         draw.polygon([at(lon, lat) for lon, lat in ring], fill=SEA)
 
     places = json.loads((HERE / "places.json").read_text())
-    for lat, lon in places.values():
+    for i, (lat, lon) in enumerate(places.values()):
         if not south < lat < north:
             continue
         x, y = at(lon, lat)
-        for r, colour in ((7.0, NAVY), (4.6, ORANGE)):
+        for r, colour in ((7.0, NAVY), (4.6, (YELLOW, ORANGE, RED)[i % 3])):
             draw.ellipse([x - r * SCALE, y - r * SCALE, x + r * SCALE, y + r * SCALE], fill=colour)
 
-    # A dark band behind the lettering. The profile picture covers the bottom-left
-    # corner on X, so the lettering sits to the right of it.
+    # A dark band behind the lettering, which is centred. The profile picture covers the
+    # bottom-left corner on X; the lettering is narrow enough to stay clear of it.
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     shade = ImageDraw.Draw(overlay)
     band_top, band_bottom = h * 0.60, h * 0.93
@@ -103,15 +116,15 @@ def banner(width: int = 1500, height: int = 500) -> Image.Image:
     draw.line([0, band_top, w, band_top], fill=RING, width=SCALE)
     draw.line([0, band_bottom, w, band_bottom], fill=RING, width=SCALE)
 
-    left = w * 0.27
+    centre = w / 2
     middle = (band_top + band_bottom) / 2
-    draw.text((left, middle - h * 0.045), "Why do people live here?", font=_font(int(h * 0.118), bold=True), fill=CREAM, anchor="lm")
+    draw.text((centre, middle - h * 0.045), "Why do people live here?", font=_font(int(h * 0.118), bold=True), fill=CREAM, anchor="mm")
     draw.text(
-        (left, middle + h * 0.085),
+        (centre, middle + h * 0.085),
         "One remote, harsh or strange place a day. Every dot is on the list.",
         font=_font(int(h * 0.052)),
         fill=MUTED,
-        anchor="lm",
+        anchor="mm",
     )
     return image.resize((width, height), Image.LANCZOS)
 

@@ -30,14 +30,18 @@ WIDTH, HEIGHT = 1600, 900
 _SCALE = 2
 _MAP = HEIGHT  # the regional map is a square filling the card's height
 
-NAVY = (15, 27, 45)
-SEA = (21, 36, 58)
-LAND = (52, 74, 104)
+# Black and greys, with yellow, orange and red accents. (NAVY and SEA keep their names from
+# the first, blue palette: NAVY is the page background, SEA the water and the tiles.)
+NAVY = (13, 13, 15)
+SEA = (27, 28, 31)
+LAND = (78, 80, 86)
 LAKE = SEA
-RING = (60, 82, 112)
-ORANGE = (242, 140, 56)
-CREAM = (250, 244, 232)
-MUTED = (150, 165, 185)
+RING = (120, 122, 130)
+ORANGE = (255, 140, 26)
+CREAM = (246, 245, 241)
+MUTED = (166, 168, 176)
+YELLOW = (255, 208, 40)
+RED = (238, 62, 50)
 
 # A city this large counts as "major" for the nearest-city line
 _MAJOR_CITY_POPULATION = 300_000
@@ -303,7 +307,7 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
     draw.text((left, y), _format_coordinates(lat, lon), font=body, fill=MUTED, anchor="ls")
 
     y += 78 * s
-    draw.text((left, y), "NEAREST MAJOR CITY", font=_font(22 * s, bold=True), fill=ORANGE, anchor="ls")
+    draw.text((left, y), "NEAREST MAJOR CITY", font=_font(22 * s, bold=True), fill=YELLOW, anchor="ls")
     y += 50 * s
     city_font = _fit(draw, city_name, panel, 44 * s)
     draw.text((left, y), city_name, font=city_font, fill=CREAM, anchor="ls")

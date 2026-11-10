@@ -38,6 +38,7 @@ _STAGES = {
     "Posts": "writing",
     "FactCheck": "fact check",
     "PhotoVerdict": "photo check",
+    "KeyFacts": "facts card",
 }
 # Lets the API re-run a safety-declined request on Anthropic's recommended fallback
 # model inside the same call, instead of handing us a refusal.

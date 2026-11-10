@@ -1,0 +1,113 @@
+"""Tests for pipeline.facts_card: which facts reach the card, and drawing it."""
+
+import io
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+from PIL import Image
+
+from pipeline import facts_card
+from pipeline.content_generator import UnsupportedClaim
+from pipeline.facts_card import KeyFact, KeyFacts, facts_card_for_candidate, select_facts
+
+BRIEF = (
+    "Land came from 96 villages [20]. The first blast furnace was lit in 1959 [W]. The 2011"
+    " Census counted 27,458 vacant houses in Bhilai Nagar [83]. Rails made up to 2007 could"
+    " circle the earth 7.5 times [W]. Milk cost $12.69 a gallon [72]."
+)
+
+
+def _facts(*pairs):
+    return KeyFacts(facts=[KeyFact(figure=f, caption=c) for f, c in pairs])
+
+
+async def _select(picked, unsupported=()):
+    with (
+        patch("pipeline.llm.parse", new=AsyncMock(return_value=picked)),
+        patch(
+            "pipeline.content_generator.check_facts", new=AsyncMock(return_value=list(unsupported))
+        ) as check,
+    ):
+        return await select_facts("Bhilai", BRIEF), check
+
+
+async def test_figures_that_are_not_in_the_brief_word_for_word_never_reach_the_card():
+    picked = _facts(
+        ("96", "villages gave up land"),
+        ("1959", "first blast furnace lit"),
+        ("27,458", "vacant houses in Bhilai Nagar (2011 census)"),
+        ("27,000", "vacant houses"),  # rounded: not what the brief says
+        ("many", "people moved in"),  # no number at all
+    )
+
+    facts, check = await _select(picked)
+
+    assert [f["figure"] for f in facts] == ["96", "1959", "27,458"]
+    # Only the survivors are sent to the fact check, each as a one-line claim
+    assert check.call_args.args[2] == [
+        "96 villages gave up land",
+        "1959 first blast furnace lit",
+        "27,458 vacant houses in Bhilai Nagar (2011 census)",
+    ]
+
+
+async def test_facts_the_fact_check_rejects_are_dropped_and_at_most_four_are_kept():
+    picked = _facts(
+        ("96", "villages"), ("1959", "furnace"), ("27,458", "houses"), ("7.5 times", "rails"),
+        ("$12.69", "milk"),
+    )
+    rejected = [UnsupportedClaim(post=2, claim="1959 furnace", problem="brief says lit, not built")]
+
+    facts, _ = await _select(picked, rejected)
+
+    assert [f["figure"] for f in facts] == ["96", "27,458", "7.5 times", "$12.69"]
+
+
+async def test_fewer_than_three_good_facts_means_no_card():
+    two, check = await _select(_facts(("96", "villages"), ("1959", "furnace")))
+    assert two is None
+    check.assert_not_called()  # nothing worth paying to check
+
+    rejected = [UnsupportedClaim(post=1, claim="x", problem="y")]
+    three, _ = await _select(_facts(("96", "a"), ("1959", "b"), ("27,458", "c")), rejected)
+    assert three is None
+
+
+async def test_overlong_figures_and_captions_are_dropped():
+    picked = _facts(
+        ("96", "villages"), ("1959", "furnace"), ("27,458", "houses"),
+        ("96 whole villages", "too long a figure"),
+        ("7.5 times", "x" * 80),
+    )
+    facts, _ = await _select(picked)
+    assert [f["figure"] for f in facts] == ["96", "1959", "27,458"]
+
+
+def test_card_is_drawn_for_three_or_four_facts_and_saved_with_alt_text(tmp_path):
+    four = [{"figure": str(n), "caption": f"caption number {n} " * 2} for n in range(4)]
+
+    for facts in (four, four[:3]):
+        card = facts_card_for_candidate("Bhilai", "company town · Asia", facts, tmp_path)
+        image = Image.open(io.BytesIO(Path(card["path"]).read_bytes()))
+        assert image.size == (1600, 900) and image.format == "PNG"
+    assert card["path"].endswith("bhilai-facts.png")
+    assert card["alt_text"].startswith("Key facts about Bhilai: 0 caption number 0")
+
+
+def test_no_card_without_enough_facts(tmp_path):
+    one = [{"figure": "96", "caption": "villages"}]
+    assert facts_card_for_candidate("Bhilai", "", None, tmp_path) is None
+    assert facts_card_for_candidate("Bhilai", "", one * 2, tmp_path) is None
+    assert facts_card_for_candidate("Bhilai", "", one * 5, tmp_path) is None
+    # Facts in a shape that cannot be drawn cost the card, not the post
+    assert facts_card_for_candidate("Bhilai", "", [{"oops": 1}] * 3, tmp_path) is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_card_is_on_unless_switched_off(monkeypatch):
+    monkeypatch.delenv("FACTS_CARD", raising=False)
+    assert facts_card.enabled()
+    monkeypatch.setenv("FACTS_CARD", "")  # how an unset repository variable arrives
+    assert facts_card.enabled()
+    monkeypatch.setenv("FACTS_CARD", "false")
+    assert not facts_card.enabled()

@@ -1,0 +1,72 @@
+name: Weekly cost report
+
+# Reads the private cost database and EMAILS the report. The report is never printed, filed as an
+# issue, or attached: this repository is public, so its logs and issues are readable by anyone.
+on:
+  schedule:
+    # Aim: Friday about 9am Pacific (17:00 UTC in winter, 16:00 UTC in summer). Cron is UTC only,
+    # and this repository's scheduled runs have started 6 to 10 hours late (the daily run, set for
+    # 09:17 UTC, has started between 15:22 and 19:52 UTC), so this is set to 10:07 UTC and should
+    # arrive around 9am Pacific. If the delay disappears it arrives in the small hours instead.
+    - cron: "7 10 * * 5"
+  workflow_dispatch:         # allow manual trigger
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    env:
+      STATE_DIR: state
+      COST_DATABASE_URL: ${{ secrets.COST_DATABASE_URL }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ vars.SMTP_PORT }}
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
+      REPORT_EMAIL_TO: ${{ secrets.REPORT_EMAIL_TO }}
+
+    steps:
+      - name: Check settings
+        id: settings
+        run: |
+          missing=""
+          for name in COST_DATABASE_URL SMTP_HOST SMTP_USERNAME SMTP_PASSWORD SMTP_FROM REPORT_EMAIL_TO; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::Not sending the cost report. These secrets are not set:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.settings.outputs.ready == 'true'
+
+      - uses: actions/setup-python@v5
+        if: steps.settings.outputs.ready == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        if: steps.settings.outputs.ready == 'true'
+        run: pip install .
+
+      # The posts and places come from the pipeline's saved state; the costs come from the database
+      - name: Check out state
+        if: steps.settings.outputs.ready == 'true'
+        run: |
+          git fetch --depth 1 origin data
+          git worktree add "$STATE_DIR" FETCH_HEAD
+
+      # The report goes to a file, not to the log
+      - name: Build report
+        if: steps.settings.outputs.ready == 'true'
+        run: python scripts/cost_report.py --state-dir "$STATE_DIR" --days 7 > cost-report.md
+
+      - name: Email report
+        if: steps.settings.outputs.ready == 'true'
+        run: python scripts/send_report.py cost-report.md

@@ -116,3 +116,21 @@ def test_cost_rows_are_matched_to_places_by_wikipedia_url_not_by_id():
 
     # A place the state no longer knows still counts toward spend, under id 0
     assert [row["candidate_id"] for row in matched] == [7, 0]
+
+
+def test_a_database_failure_prints_only_the_kind_of_error(monkeypatch, tmp_path, capsys):
+    """In Actions the log is public, and a connection error can quote the host."""
+    import sys
+
+    async def failing_fetch(url):
+        raise OSError("could not reach secret-host.example.com")
+
+    monkeypatch.setattr(cost_report, "fetch", failing_fetch)
+    monkeypatch.setenv("COST_DATABASE_URL", "postgresql://u:p@secret-host.example.com/db")
+    monkeypatch.setattr(sys, "argv", ["cost_report.py", "--state-dir", str(tmp_path)])
+
+    assert cost_report.main() == 3
+
+    output = capsys.readouterr().out
+    assert "Could not read the cost database (OSError)." in output
+    assert "secret-host" not in output

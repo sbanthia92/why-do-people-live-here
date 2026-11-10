@@ -155,7 +155,13 @@ def main() -> int:
         return 2
     if args.pull:
         _pull(args.state_dir)
-    costs = attach_places(asyncio.run(fetch(url)), _rows(args.state_dir, "candidates"))
+    try:
+        rows = asyncio.run(fetch(url))
+    except Exception as exc:  # noqa: BLE001
+        # Only the kind of error: in Actions the log is public, and a connection error can quote the host
+        print(f"Could not read the cost database ({type(exc).__name__}).")
+        return 3
+    costs = attach_places(rows, _rows(args.state_dir, "candidates"))
     print(build_report(args.state_dir, datetime.now(UTC), args.days, costs), end="")
     return 0
 

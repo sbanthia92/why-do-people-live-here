@@ -19,6 +19,7 @@ from db.client import _init_connection
 from pipeline import costs
 from pipeline.assessor import Assessment
 from pipeline.content_generator import FactCheck, Posts
+from pipeline.facts_card import KeyFact, KeyFacts
 from pipeline.researcher import ResearchSummary
 from scheduler.run_pipeline import run_once
 
@@ -53,6 +54,9 @@ class FakeWorld:
         self.seed = seed
         self.regions = regions
         self.no_angle = no_angle
+        self.figures: tuple[str, ...] = ()  # figures the model offers for the facts card
+        self.brief_figures = ""  # extra text in the brief, for those figures to be found in
+        self.facts_asked = 0
         self.written: list[str] = []
         self.card_contexts: list[str] = []
         self.researched: list[str] = []
@@ -70,7 +74,9 @@ class FakeWorld:
             self.max_in_flight = max(self.max_in_flight, self._in_flight)
             await asyncio.sleep(0.05)
             self._in_flight -= 1
-            return ResearchSummary(region=self.regions[place], summary=f"{place} brief [W][1].")
+            return ResearchSummary(
+                region=self.regions[place], summary=f"{place} brief [W][1].{self.brief_figures}"
+            )
         if output_format is Assessment:
             return Assessment(
                 corroborated_reason="backed by [W][1]",
@@ -81,15 +87,26 @@ class FakeWorld:
             )
         if output_format is FactCheck:
             return FactCheck(unsupported=[])
+        if output_format is KeyFacts:
+            self.facts_asked += 1
+            return KeyFacts(facts=[KeyFact(figure=n, caption=f"things {n}") for n in self.figures])
         assert output_format is Posts
         self.written.append(place)
         return Posts(
             posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."], sources=[1]
         )
 
-    async def post_to_x(self, post_text, thread_parts, image_url, dry_run=False, alt_text=None):
+    async def post_to_x(
+        self, post_text, thread_parts, image_url, dry_run=False, alt_text=None, extra_images=None
+    ):
         self.posted.append(
-            {"text": post_text, "replies": thread_parts, "dry_run": dry_run, "image": image_url}
+            {
+                "text": post_text,
+                "replies": thread_parts,
+                "dry_run": dry_run,
+                "image": image_url,
+                "extra": [Path(e["path"]).name for e in extra_images or []],
+            }
         )
         return None if dry_run else f"x-{len(self.posted)}"
 
@@ -386,3 +403,39 @@ async def test_costs_are_saved_per_place_with_x_posting_only_when_published(db, 
     # Three posts, then the closing reply naming the source, at $0.015 each
     assert x_rows[0]["requests"] == 4
     assert float(x_rows[0]["usd"]) == pytest.approx(0.06)
+
+
+async def test_facts_card_goes_out_next_to_the_map_and_a_preview_is_reused(db, monkeypatch, tmp_path):
+    world = FakeWorld({"island_community": {"places": ["Alpha Island"]}}, {"Alpha Island": "Oceania"})
+    world.figures = ("12", "34", "56", "999")  # 999 is not in the brief, so it is dropped
+    world.brief_figures = " It has 12 boats, 34 houses and 56 goats."
+    monkeypatch.setenv("PREVIEW_DIR", str(tmp_path))
+
+    with world:
+        monkeypatch.setenv("DRY_RUN", "true")
+        assert await run_once() == 1
+        monkeypatch.setenv("DRY_RUN", "false")
+        assert await run_once() == 1
+
+    post = world.posted[-1]
+    assert not post["dry_run"]
+    assert post["image"].endswith("Alpha Island.png")  # the map stays first
+    assert post["extra"] == ["alpha-island-facts.png"]
+    assert (tmp_path / "alpha-island-facts.png").read_bytes().startswith(b"\x89PNG")
+    # The real run drew the card from the facts the preview saved, without asking again
+    assert world.facts_asked == 1
+    saved = await db.fetchval("SELECT facts FROM posts WHERE NOT dry_run")
+    assert [f["figure"] for f in saved] == ["12", "34", "56"]
+    record = (tmp_path / "0001-alpha-island.md").read_text()
+    assert "Key facts about Alpha Island: 12 things 12; 34 things 34; 56 things 56." in record
+
+
+async def test_a_place_with_too_few_checked_facts_is_posted_without_the_card(db):
+    world = FakeWorld({"island_community": {"places": ["Alpha Island"]}}, {"Alpha Island": "Oceania"})
+    world.figures = ("12", "34")
+
+    with world:
+        assert await run_once() == 1
+
+    assert world.posted[-1]["extra"] == []
+    assert await db.fetchval("SELECT facts FROM posts") is None

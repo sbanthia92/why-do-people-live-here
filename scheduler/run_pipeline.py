@@ -190,7 +190,7 @@ async def _previewed_content(db_pool, candidate: dict) -> dict | None:
         return None
     row = await db_pool.fetchrow(
         """
-        SELECT post_text, thread_parts, sources FROM posts
+        SELECT post_text, thread_parts, sources, facts FROM posts
         WHERE candidate_id = $1 AND dry_run
         ORDER BY posted_at DESC, id DESC
         LIMIT 1

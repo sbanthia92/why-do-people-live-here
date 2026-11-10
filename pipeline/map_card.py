@@ -30,14 +30,18 @@ WIDTH, HEIGHT = 1600, 900
 _SCALE = 2
 _MAP = HEIGHT  # the regional map is a square filling the card's height
 
-NAVY = (15, 27, 45)
-SEA = (21, 36, 58)
-LAND = (52, 74, 104)
+# Deep ocean blues with teal land, and warm accents that stand out against both
+NAVY = (9, 20, 36)
+SEA = (12, 40, 66)
+LAND = (45, 122, 120)
 LAKE = SEA
-RING = (60, 82, 112)
-ORANGE = (242, 140, 56)
-CREAM = (250, 244, 232)
-MUTED = (150, 165, 185)
+RING = (86, 146, 160)
+ORANGE = (255, 176, 59)
+CREAM = (253, 247, 236)
+MUTED = (156, 182, 198)
+# Second and third accents, used where several things need telling apart
+AQUA = (110, 220, 205)
+CORAL = (255, 122, 92)
 
 # A city this large counts as "major" for the nearest-city line
 _MAJOR_CITY_POPULATION = 300_000

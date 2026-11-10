@@ -36,6 +36,8 @@ jobs:
       # "true" adds a link to the Wikipedia article in the closing reply. X charges far
       # more for a post containing a link, so the source is named in text by default.
       SOURCE_LINK: ${{ vars.SOURCE_LINK }}
+      # Set the FACTS_CARD repository variable to "false" to stop attaching the key-facts card.
+      FACTS_CARD: ${{ vars.FACTS_CARD }}
       POSTS: ${{ inputs.posts || 1 }}
       PREVIEW_DIR: previews
       STATE_DIR: state

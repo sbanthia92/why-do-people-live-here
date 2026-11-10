@@ -63,6 +63,7 @@ flowchart TD
 | Write | `pipeline/content_generator.py` | brief + editor notes → list of posts | Opus (writer and fact checker) |
 | Measure | `pipeline/xtext.py` | text → length as X counts it | none |
 | Illustrate | `pipeline/map_card.py`, `pipeline/image_sourcer.py` | place → PNG card, or a licensed photo | none |
+| Facts card | `pipeline/facts_card.py` | brief → three or four checked figures → a second PNG card next to the map | Opus (pick), Opus (fact check) |
 | Image check | `scripts/check_images.py`, `pipeline/photo_filter.py` | recently posted places → which photos pass the licence, size, shape and AI checks (read-only, run by hand) | Haiku (vision); Sonnet as the reference when comparing |
 | Publish | `pipeline/publisher.py`, `pipeline/preview.py` | content → X posts, `posts` row, Markdown preview | none |
 | Review | `pipeline/review.py` | rejected preview issues → candidates set to `skipped` | none |
@@ -121,7 +122,7 @@ A failing draft goes back to the writer with the specific problems, at most twic
 
 `run_publish` assembles the images, the replies and the record:
 
-- **Image:** a map card (on by default), or if that is impossible and `POST_IMAGES=true`, a public-domain Commons photo.
+- **Images:** a map card (on by default), or if that is impossible and `POST_IMAGES=true`, a public-domain Commons photo. Next to it, a **key-facts card** (on by default, `FACTS_CARD=false` turns it off) with the place's three or four most striking figures. X allows four images on a post; an image that fails to upload is left off and the post still goes out.
 - **Replies:** the thread's remaining posts, then a footer naming the sources and a follow line. The footer names the Wikipedia article and then the other outlets whose facts the writer says it used ("Sources: Wikipedia, “Bhilai”; Question of Cities; Britannica"), as many as fit in one post. The writer returns source numbers from the brief's tags; `pipeline/attribution.py` turns them into outlet names from the saved source list, so a name cannot be invented, and names carry no dots so X does not turn them into links.
 - **Post:** `tweepy` to the X v2 API; media upload uses v1.1, the only place it exists.
 - **Record:** a `posts` row, the candidate set to `posted` (or `approved` for a dry run), and a Markdown preview file.
@@ -169,7 +170,7 @@ Six tables, defined in `db/schema.sql`:
 | `candidates` | place, URL (unique), story category, region, status, layer 1 result | the state machine above |
 | `research` | web sources (JSONB), brief | `wikipedia_extract` is not saved to state |
 | `assessments` | both verdicts, both reasons, writer notes, `passed` | |
-| `posts` | text, thread parts (JSONB), outlets named in the closing reply (`sources`, JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
+| `posts` | text, thread parts (JSONB), outlets named in the closing reply (`sources`, JSONB), the facts card's figures (`facts`, JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
 | `variety_log` | region and story category of each real post | see 8.4 |
 | `costs` | one row per place, stage and model: requests, tokens, dollars. Lives only in the run's throwaway database, then is copied to the private cost database. Never saved in the repository | see 6.3 and 8.17 |
 
@@ -366,6 +367,12 @@ Each entry says what was chosen, what it buys, and what it costs.
   - Run logs from before this change still show dollar estimates, and can be deleted from the repository's Actions page.
   - The figures are estimates: token prices and the search fee are constants in `pipeline/llm.py`, and X's per-post rates are constants in `pipeline/costs.py`. They go stale when prices change. The X figure assumes every part of a thread was sent. X media upload is not counted.
   - Posts made before tracking began have no cost rows and are listed without a cost.
+
+### 8.18 A key-facts card, with three checks on every figure
+
+- **Chosen:** after a post is written, a model picks up to six striking figures from the brief. A figure reaches the card only if (1) it and its caption are short enough to draw, (2) every number in it appears in the brief exactly as written, checked in code, and (3) the same fact check the posts go through finds it supported. Three or four survivors make a card; fewer means no card. The figures are saved with the post (`posts.facts`), so a previewed post is published with the same card.
+- **Why:** public-domain photos of remote places are scarce and rarely show daily life, while every brief already holds concrete, sourced figures. A drawn card has no licence risk and is always about the right place.
+- **Cost:** a wrong figure on an image is a public error that cannot be edited, which is why there are three checks, but two of them are model judgements, and an error in the brief itself still passes (8.3). Two more Opus calls per post (an estimated 3 to 5 cents, not measured). The card can repeat a figure the thread already gives. The cards' colours changed with it (deeper blue sea, teal land, amber, aqua and coral accents), which also changed the map card and the profile art drawn from the same palette.
 
 ## 9. Known gaps and risks
 

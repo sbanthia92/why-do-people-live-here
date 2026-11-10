@@ -14,6 +14,8 @@ from rich.panel import Panel
 
 from pipeline import costs
 from pipeline.candidate_selector import _HEADERS
+from pipeline.facts_card import enabled as _facts_card_enabled
+from pipeline.facts_card import facts_card_for_candidate
 from pipeline.image_sourcer import get_image_for_candidate
 from pipeline.map_card import map_card_for_candidate
 from pipeline.preview import write_preview
@@ -71,12 +73,14 @@ async def post_to_x(
     image_url: str | None,
     dry_run: bool = False,
     alt_text: str | None = None,
+    extra_images: list[dict] | None = None,
 ) -> str | None:
     """Post to X and return the post ID.
 
     If dry_run=True, logs the content but does not call the X API.
     Handles single post and thread (reply-chaining) cases. The image, if any, is
-    attached to the first post.
+    attached to the first post, followed by `extra_images` ({"path", "alt_text"} each;
+    X allows four images on a post).
 
     If the first post fails, the error propagates and nothing was published. If a
     later reply fails, the thread is left as far as it got and the first post's ID is
@@ -90,11 +94,15 @@ async def post_to_x(
             if i == 1 and image_url:
                 title += " + image"
             console.print(Panel(part, title=title, title_align="left"))
-        if image_url:
-            console.print(f"Image: {image_url}")
+        for image in [image_url, *(e["path"] for e in extra_images or [])]:
+            if image:
+                console.print(f"Image: {image}")
         return None
 
-    media_id = await upload_image(image_url, alt_text) if image_url else None
+    images = [(image_url, alt_text)] if image_url else []
+    images += [(e["path"], e["alt_text"]) for e in extra_images or []]
+    # An image that fails to upload is left off; the post still goes out
+    media_ids = [m for m in [await upload_image(src, alt) for src, alt in images[:4]] if m]
     client = _x_client()
     first_id: str | None = None
     reply_to: str | None = None
@@ -103,7 +111,7 @@ async def post_to_x(
             response = await asyncio.to_thread(
                 client.create_tweet,
                 text=part,
-                media_ids=[media_id] if i == 0 and media_id else None,
+                media_ids=media_ids if i == 0 and media_ids else None,
                 in_reply_to_tweet_id=reply_to,
             )
         except tweepy.TweepyException as exc:
@@ -162,8 +170,8 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
         """
         INSERT INTO posts
             (candidate_id, post_text, thread_parts, image_url, image_credit, x_post_id, dry_run,
-             sources)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             sources, facts)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         """,
         candidate_id,
         post_data["post_text"],
@@ -173,6 +181,7 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
         post_data.get("x_post_id"),
         dry_run,
         post_data.get("sources"),
+        post_data.get("facts"),
     )
     await db_pool.execute(
         "UPDATE candidates SET status = $2, updated_at = now() WHERE id = $1",
@@ -229,23 +238,35 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
     )
     name, url = candidate["place_name"], candidate["wikipedia_url"]
 
-    # One image on the first post: the map card we draw, or failing that a licensed photo
-    card = photo = None
+    # On the first post: the map card we draw (or failing that a licensed photo), and next to
+    # it the key-facts card when the place has enough checked facts
+    card = photo = facts = None
+    context = " · ".join(
+        filter(None, [(candidate["story_category"] or "").replace("_", " "), candidate["region"]])
+    )
+    directory = Path(os.getenv("PREVIEW_DIR") or tempfile.gettempdir())
     if _map_cards_enabled():
-        context = " · ".join(
-            filter(None, [(candidate["story_category"] or "").replace("_", " "), candidate["region"]])
-        )
-        directory = Path(os.getenv("PREVIEW_DIR") or tempfile.gettempdir())
         card = await map_card_for_candidate(name, url, context, directory)
     if card is None and _images_enabled():
         photo = await get_image_for_candidate(name, url)
+    if _facts_card_enabled():
+        facts = facts_card_for_candidate(name, context, content.get("facts"), directory)
     image_source = card["path"] if card else photo["url"] if photo else None
     alt_text = card["alt_text"] if card else None
+    extra = [facts] if facts else []
+    if image_source is None and extra:
+        # No map or photo: the facts card is the post's image
+        image_source, alt_text, extra = facts["path"], facts["alt_text"], []
 
     replies = [*(content["thread_parts"] or []), _footer(url, photo, content.get("sources"))]
 
     x_post_id = await post_to_x(
-        content["post_text"], replies, image_source, dry_run=dry_run, alt_text=alt_text
+        content["post_text"],
+        replies,
+        image_source,
+        dry_run=dry_run,
+        alt_text=alt_text,
+        extra_images=extra,
     )
     if x_post_id:
         # The closing reply is the only post that can carry a link. If a thread stopped
@@ -264,7 +285,7 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             [content["post_text"], *replies],
             preview_dir,
             x_post_id=x_post_id,
-            image_note=alt_text,
+            image_note=" ".join(filter(None, [alt_text, *(e["alt_text"] for e in extra)])) or None,
         )
         console.log(f"[publisher] {'Preview' if dry_run else 'Record'} written to {file}")
 
@@ -276,6 +297,8 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             "thread_parts": content["thread_parts"],
             # Kept so that a previewed post is published with the same closing reply
             "sources": content.get("sources"),
+            # Kept so that a previewed post is published with the same facts card
+            "facts": content.get("facts"),
             "image_url": Path(card["path"]).name if card else photo["url"] if photo else None,
             # The Commons page records which file was used and the licence it had then
             "image_credit": " ".join(

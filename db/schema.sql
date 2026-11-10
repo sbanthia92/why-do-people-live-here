@@ -68,6 +68,8 @@ CREATE TABLE IF NOT EXISTS costs (
 
 -- The outlets a post's facts came from, named in its closing reply. Safe to re-run.
 ALTER TABLE posts ADD COLUMN IF NOT EXISTS sources JSONB;
+-- The figures drawn on a post's key-facts card, as [{"figure", "caption"}]. Safe to re-run.
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS facts JSONB;
 
 -- Migration from the earlier 0-10 scoring, which the two yes/no gates replaced.
 -- Safe to re-run: candidates that passed the old scoring count as assessed.

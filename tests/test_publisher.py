@@ -254,3 +254,43 @@ def test_footer_drops_outlets_from_the_end_until_it_fits_one_post(monkeypatch):
     assert weighted_length(footer) <= 280
     assert "Outlet number 0 of many" in footer and "Outlet number 19 of many" not in footer
     assert footer.endswith("Follow for more.")
+
+
+async def test_both_cards_are_attached_to_the_first_post_only(monkeypatch):
+    from pipeline.publisher import post_to_x
+
+    for key in ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET"):
+        monkeypatch.setenv(key, "x")
+    uploads = AsyncMock(side_effect=["map-id", "facts-id"])
+    client = MagicMock()
+    client.create_tweet.side_effect = [MagicMock(data={"id": "1"}), MagicMock(data={"id": "2"})]
+    extra = [{"path": "/tmp/facts.png", "alt_text": "Key facts."}]
+
+    with (
+        patch("pipeline.publisher.upload_image", new=uploads),
+        patch("pipeline.publisher._x_client", return_value=client),
+    ):
+        assert await post_to_x("Hook.", ["2/ More."], "/tmp/map.png", alt_text="Map.", extra_images=extra) == "1"
+
+    assert [c.args for c in uploads.call_args_list] == [("/tmp/map.png", "Map."), ("/tmp/facts.png", "Key facts.")]
+    first, second = client.create_tweet.call_args_list
+    assert first.kwargs["media_ids"] == ["map-id", "facts-id"]
+    assert second.kwargs["media_ids"] is None
+
+
+async def test_an_image_that_fails_to_upload_is_left_off_and_the_post_still_goes_out(monkeypatch):
+    from pipeline.publisher import post_to_x
+
+    for key in ("X_API_KEY", "X_API_SECRET", "X_ACCESS_TOKEN", "X_ACCESS_SECRET"):
+        monkeypatch.setenv(key, "x")
+    client = MagicMock()
+    client.create_tweet.return_value = MagicMock(data={"id": "1"})
+    extra = [{"path": "/tmp/facts.png", "alt_text": "Key facts."}]
+
+    with (
+        patch("pipeline.publisher.upload_image", new=AsyncMock(side_effect=["map-id", None])),
+        patch("pipeline.publisher._x_client", return_value=client),
+    ):
+        await post_to_x("Hook.", None, "/tmp/map.png", extra_images=extra)
+
+    assert client.create_tweet.call_args.kwargs["media_ids"] == ["map-id"]

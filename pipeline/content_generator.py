@@ -1,9 +1,10 @@
 """Generate post copy (a single post or a thread) from the research and the editor's notes."""
 
+import anthropic
 from pydantic import BaseModel, Field
 from rich.console import Console
 
-from pipeline import llm
+from pipeline import facts_card, llm
 from pipeline.attribution import outlets_used
 from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
@@ -176,7 +177,8 @@ async def run_content_generation(db_pool, candidate_id: int) -> dict:
     """Write the content for a candidate.
 
     Returns {"post_text": first post, "thread_parts": follow-up posts, or None for a
-    single post, "sources": names of the outlets whose facts were used}.
+    single post, "sources": names of the outlets whose facts were used, "facts": the
+    figures for the key-facts card, or None}.
     """
     row = await db_pool.fetchrow(
         """
@@ -197,4 +199,17 @@ async def run_content_generation(db_pool, candidate_id: int) -> dict:
         "post_text": draft.posts[0],
         "thread_parts": draft.posts[1:] or None,
         "sources": outlets_used(draft.sources, row["web_sources"] or []),
+        "facts": await _card_facts(row["place_name"], row["raw_research"]),
     }
+
+
+async def _card_facts(place_name: str, raw_research: str) -> list[dict] | None:
+    """Facts for the key-facts card. The post is already written, so a failure here only
+    costs the card, never the post."""
+    if not facts_card.enabled():
+        return None
+    try:
+        return await facts_card.select_facts(place_name, raw_research)
+    except (llm.LLMRefusalError, anthropic.APIError, RuntimeError, ValueError) as exc:
+        console.log(f"[facts_card] {place_name}: no card ({type(exc).__name__})")
+        return None

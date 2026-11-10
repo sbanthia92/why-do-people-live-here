@@ -17,6 +17,9 @@ MODEL = "claude-opus-5-5"
 # of tokens of web pages. Finding and quoting sources needs less judgement than the
 # brief, the editor's gates or the writing, so it runs on the cheaper model.
 SEARCH_MODEL = "claude-sonnet-5-5"
+# Looking at a photo and saying what it shows is simple work for the cheaper model. A cheaper
+# one (Haiku) could do it for about a twentieth of the price: try it once real token counts are known.
+PHOTO_MODEL = SEARCH_MODEL
 # US dollars per million tokens (input, output), from Anthropic's price list on
 # 2026-09-25. Only used to print an estimate; update when prices change.
 _PRICES = {MODEL: (4.00, 20.00), SEARCH_MODEL: (2.00, 10.00)}
@@ -29,6 +32,7 @@ _STAGES = {
     "Assessment": "gates",
     "Posts": "writing",
     "FactCheck": "fact check",
+    "PhotoVerdict": "photo check",
 }
 # Lets the API re-run a safety-declined request on Anthropic's recommended fallback
 # model inside the same call, instead of handing us a refusal.
@@ -152,11 +156,21 @@ def get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-async def parse(*, system: str, user: str, output_format: type[T], effort: str = "medium") -> T:
-    """Ask Claude for a response validated against the `output_format` Pydantic model."""
+async def parse(
+    *,
+    system: str,
+    user: str | list[dict],
+    output_format: type[T],
+    effort: str = "medium",
+    model: str = MODEL,
+) -> T:
+    """Ask Claude for a response validated against the `output_format` Pydantic model.
+
+    `user` is text, or a list of content blocks (for example an image and a question).
+    """
     async with _request_slot():
         response = await get_client().beta.messages.parse(
-            model=MODEL,
+            model=model,
             max_tokens=_MAX_TOKENS,
             system=system,
             messages=[{"role": "user", "content": user}],

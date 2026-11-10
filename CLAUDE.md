@@ -29,7 +29,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - `pipeline/content_generator.py` — writing, X-length check, fact check, rewrite loop.
 - `pipeline/xtext.py` — X's character counting.
 - `pipeline/map_card.py` + `pipeline/data/natural_earth.json.gz` — locator card image.
-- `pipeline/image_sourcer.py` — optional Commons photo (off by default). `scripts/check_images.py` + `.github/workflows/image-check.yml` — read-only report of the usable photos available for recent posts.
+- `pipeline/image_sourcer.py` — optional Commons photo (off by default). `pipeline/photo_filter.py` (size and shape, not-a-photo names, AI check that a photo shows the place), `scripts/check_images.py` + `.github/workflows/image-check.yml` — read-only report of the photos that pass every check for recent posts.
 - `pipeline/publisher.py` — X v2 API via tweepy.
 - `pipeline/preview.py` — preview / posted issue bodies.
 - `pipeline/llm.py` — model names, token/cost accounting.

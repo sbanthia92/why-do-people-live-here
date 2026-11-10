@@ -24,6 +24,8 @@ jobs:
       # Wikimedia asks for a real contact (email or URL) in the User-Agent.
       WIKIMEDIA_USER_AGENT: whydopeoplelivehere/0.1 (${{ vars.WIKIMEDIA_CONTACT || format('https://github.com/{0}', github.repository) }})
       STATE_DIR: state
+      # For the AI check that each photo is a real photo of the place; without it that check is skipped
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4

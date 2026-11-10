@@ -79,7 +79,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **No hosted database** (PR #7). State is JSON-lines files (one per table, ordered by id) on the `data` branch. Each workflow run loads them into a throwaway embedded Postgres (`pgserver`), runs, and commits back — even on failure, since a post may already have gone out. Full article text is left out of saved state. Earlier approaches (throwaway container, Actions cache, `DATABASE_URL` secret) were dropped because they lost history or needed signup.
 - **Schema changes go in `db/schema.sql` as idempotent migrations**, because it is re-applied on every run after state is loaded.
 - **Daily workflow is preview mode by default**: posts are filed as GitHub issues labelled `preview`, assigned to the owner (so GitHub emails them). `PUBLISH_TO_X=true` + the four X secrets switches to publishing; each published post is filed as a `posted` issue with its X link.
-- **Schedule is `17 9 * * *` (09:17 UTC) to land at ~14:30 UTC**: GitHub has started this workflow ~5 hours late consistently. 14:30 UTC is daytime for the Americas, Europe and India. If the delay disappears, posts go out 5 hours early.
+- **Schedule is `17 9 * * *` (09:17 UTC) to land at ~14:30 UTC**: GitHub has started this workflow hours late consistently: ~5 hours at first, and 6 to 10½ hours for the 13 runs from 28 Oct to 9 Nov (start times 15:22 to 19:52 UTC). If the delay disappears, posts go out 5 to 10 hours early. The Friday cost report is set to 10:07 UTC for the same reason.
 - Missing `ANTHROPIC_API_KEY` → run skips with a warning. Out of Anthropic credits → one clear error line, state still saved.
 - Workflow and Dockerfile run Python 3.11; CI tests 3.11 and 3.12.
 

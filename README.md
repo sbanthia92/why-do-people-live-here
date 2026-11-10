@@ -91,7 +91,7 @@ Until step 3, costs are not saved. The string contains a password: if it leaks, 
 
 ### The weekly cost report, by email
 
-Every Friday evening (UTC) the `Weekly cost report` workflow reads the cost database and **emails** you the last 7 days: spend, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. This repository is public, so the report is never printed in a log, filed as an issue or attached to a run: it only goes to your inbox. You can also start the workflow by hand from the Actions tab.
+Every Friday morning the `Weekly cost report` workflow reads the cost database and **emails** you the last 7 days: spend, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. This repository is public, so the report is never printed in a log, filed as an issue or attached to a run: it only goes to your inbox. It is scheduled for 10:07 UTC, which in practice arrives around 9am Pacific: GitHub only schedules in UTC and has been starting this repository's scheduled runs 6 to 10 hours late, so the arrival time varies (about 8am to 1pm Pacific), and it shifts an hour with daylight saving. You can also start the workflow by hand from the Actions tab.
 
 Setup, with [Resend](https://resend.com) (any SMTP provider works; Resend's key can only send mail, which is why I suggest it over a Gmail app password, which can also read your mailbox):
 
@@ -103,7 +103,7 @@ Setup, with [Resend](https://resend.com) (any SMTP provider works; Resend's key 
    | `SMTP_HOST` | `smtp.resend.com` |
    | `SMTP_USERNAME` | `resend` |
    | `SMTP_PASSWORD` | the API key |
-   | `SMTP_FROM` | an address on a domain you have verified in Resend, such as `Cost report <reports@yourdomain.com>`. Without a verified domain Resend's shared test sender (`onboarding@resend.dev`) may only deliver to your own Resend account email. |
+   | `SMTP_FROM` | an address on a domain you have verified in Resend, such as `Cost report <reports@yourdomain.com>`, or Resend's shared test sender `onboarding@resend.dev`. The test sender may only deliver to your own Resend account email, so make `REPORT_EMAIL_TO` that address. |
    | `REPORT_EMAIL_TO` | the address that should receive the report |
 
 3. Optional: a repository **variable** `SMTP_PORT` (default 587, which upgrades the connection with STARTTLS; 465 uses TLS from the start). The connection is never unencrypted.

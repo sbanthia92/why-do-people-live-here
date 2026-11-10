@@ -89,7 +89,27 @@ One-time setup, with [Neon](https://neon.com) (a free hosted Postgres; the data 
 
 Until step 3, costs are not saved. The string contains a password: if it leaks, reset the password in Neon.
 
-Then, whenever you want the report, run `python scripts/cost_report.py --pull`. It reads the costs from the database and the posts from the saved state, and prints spend for the last 7 days, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. If the database cannot be reached at the end of a run, that run's costs are lost. Runs started with plain `python scripts/run_local.py` keep their costs in the local database only.
+### The weekly cost report, by email
+
+Every Friday evening (UTC) the `Weekly cost report` workflow reads the cost database and **emails** you the last 7 days: spend, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. This repository is public, so the report is never printed in a log, filed as an issue or attached to a run: it only goes to your inbox. You can also start the workflow by hand from the Actions tab.
+
+Setup, with [Resend](https://resend.com) (any SMTP provider works; Resend's key can only send mail, which is why I suggest it over a Gmail app password, which can also read your mailbox):
+
+1. In Resend, create a **new API key just for this project**, with sending access only. Don't reuse another app's key, so each can be revoked on its own.
+2. Add these repository **secrets** (Settings, Secrets and variables, Actions, Secrets):
+
+   | Secret | Value |
+   |---|---|
+   | `SMTP_HOST` | `smtp.resend.com` |
+   | `SMTP_USERNAME` | `resend` |
+   | `SMTP_PASSWORD` | the API key |
+   | `SMTP_FROM` | an address on a domain you have verified in Resend, such as `Cost report <reports@yourdomain.com>`. Without a verified domain Resend's shared test sender (`onboarding@resend.dev`) may only deliver to your own Resend account email. |
+   | `REPORT_EMAIL_TO` | the address that should receive the report |
+
+3. Optional: a repository **variable** `SMTP_PORT` (default 587, which upgrades the connection with STARTTLS; 465 uses TLS from the start). The connection is never unencrypted.
+4. Start the workflow once by hand to check it. Its log only says whether the email was sent (or the kind of error), never the report or your settings. If a secret is missing it skips with a warning naming which one.
+
+You can also run `python scripts/cost_report.py --pull` on your own computer (with `COST_DATABASE_URL` in `.env`) to print the report. If the database cannot be reached at the end of a daily run, that run's costs are lost. Runs started with plain `python scripts/run_local.py` keep their costs in the local database only.
 
 ## Where the pipeline keeps its memory
 

@@ -33,7 +33,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - `pipeline/publisher.py` — X v2 API via tweepy.
 - `pipeline/preview.py` — preview / posted issue bodies.
 - `pipeline/llm.py` — model names, token/cost accounting.
-- `pipeline/costs.py` — per-place cost ledger; `db/cost_store.py` copies it at the end of a run to a separate private database (`COST_DATABASE_URL` secret), never into the repository; `scripts/cost_report.py` reads it on the owner's computer.
+- `pipeline/costs.py` — per-place cost ledger; `db/cost_store.py` copies it at the end of a run to a separate private database (`COST_DATABASE_URL` secret), never into the repository; `scripts/cost_report.py` builds the report, and `.github/workflows/weekly-cost.yml` + `scripts/send_report.py` email it every Friday (never printed in the public log).
 - `scheduler/run_pipeline.py` — orchestrates a run, resumption, `--posts`, `--parallel`.
 - `db/schema.sql` (idempotent, applied every run, contains migrations), `db/client.py`, `db/state.py` (JSON-lines export/import of tables).
 - `assets/` — profile picture and banner, drawn by `assets/make_profile_images.py`.
@@ -112,6 +112,6 @@ Ideas not built yet, roughly in order of value. Each says why and where it would
 6. **Second platform (Bluesky or Mastodon).** Both have free posting APIs and allow links, so the source could be linked there. Needs a small publisher interface so X stays the default and each platform has its own length rules. Touches `pipeline/publisher.py`, `pipeline/xtext.py`, workflow secrets.
 7. **Archive site on GitHub Pages.** A static page built from `posts.jsonl` on the `data` branch: a map of every place posted, with the thread text and sources. Free hosting, gives the X bio one link. New `site/` build step in the workflow.
 8. **Fact-check regression set.** A handful of saved briefs with known-good and known-bad drafts, run against the real model on demand (not in CI), to check the gates and fact check still behave after a model or prompt change. New `evals/` directory and script.
-9. **Cost dashboard.** Per-place costs are in the private cost database and read with `cost_report.py`. A chart page (spend over time, cost per post) must not be published from the public repository; build it from the database on the owner's computer, or behind a login.
+9. **Cost dashboard.** Per-place costs are in the private cost database and read with `cost_report.py`. The report is emailed weekly. A chart page (spend over time, cost per post) must not be published from the public repository; build it from the database, or behind a login.
 10. **Schedule drift guard.** The cron assumes GitHub starts the workflow ~5 hours late. Log the actual start time, and if the delay disappears, wait or trigger from an external scheduler (`repository_dispatch`) so posts still land near 14:30 UTC. Touches `.github/workflows/post.yml`.
 11. **Corrections.** A script to record a reader-reported error against a posted place and post a correction reply under the thread (through `--publish`-style confirmation). New `scripts/correct.py`, a `corrections` table.

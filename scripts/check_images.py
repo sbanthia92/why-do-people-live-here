@@ -10,7 +10,8 @@ It saves small copies of the accepted photos so they can be looked at. It posts 
 
 Usage:  python scripts/check_images.py --state-dir DIR [--days 7] [--out-dir image-check]
         python scripts/check_images.py --place "Kaktovik, Alaska" --place "Nueva Germania"
-        add --no-ai to skip the AI check
+        add --no-ai to skip the AI check, or --compare to also run the stronger model and see
+        where the cheap one differs
 """
 
 import argparse
@@ -74,6 +75,7 @@ def photo_record(page: dict, source: str) -> dict | None:
         "mime": info.get("mime"),
         "image": None,
         "shows": None,
+        "reference": None,
     }
 
 
@@ -124,10 +126,14 @@ async def photos_for(client: httpx.AsyncClient, title: str) -> list[dict]:
     return list(found.values())
 
 
-async def check_with_ai(client: httpx.AsyncClient, place: str, photos: list[dict]) -> None:
+async def check_with_ai(
+    client: httpx.AsyncClient, place: str, photos: list[dict], compare: bool = False
+) -> None:
     """Ask Claude whether each photo that passed the cheap checks is a real photo of the place.
 
-    Updates the records in place. A photo that cannot be checked is not accepted.
+    Updates the records in place. A photo that cannot be checked is not accepted. With `compare`,
+    the stronger reference model judges the same photos too, to show where the cheap one differs
+    (its answer is recorded, but the cheap model's decides).
     """
     candidates = [p for p in photos if p["usable"]]
     for photo in candidates[_MAX_JUDGED:]:
@@ -138,7 +144,7 @@ async def check_with_ai(client: httpx.AsyncClient, place: str, photos: list[dict
             resp = await client.get(photo["thumb_url"], follow_redirects=True)
             resp.raise_for_status()
             photo["image"] = resp.content
-            verdict = await judge_photo(
+            args = (
                 place,
                 resp.content,
                 resp.headers.get("content-type", photo["mime"] or "image/jpeg").split(";")[0],
@@ -146,6 +152,13 @@ async def check_with_ai(client: httpx.AsyncClient, place: str, photos: list[dict
                 photo["description"],
                 photo["source"],
             )
+            verdict = await judge_photo(*args)
+            if compare:
+                try:
+                    reference = await judge_photo(*args, model=llm.PHOTO_REFERENCE_MODEL)
+                    photo["reference"] = (reference.accepted, reference.reason)
+                except (anthropic.APIError, llm.LLMRefusalError):
+                    photo["reference"] = None  # no second opinion for this one
         except (httpx.HTTPError, anthropic.APIError, llm.LLMRefusalError) as exc:
             photo.update(usable=False, reason=f"not checked ({type(exc).__name__})")
             return
@@ -187,7 +200,36 @@ def render(results: dict[str, list[dict]], max_listed: int = 6, ai_note: str = "
         if rejected:
             why = ", ".join(f"{reason} ×{n}" for reason, n in rejected.most_common())
             lines += ["", f"Rejected {sum(rejected.values())}: {why}."]
+    lines += _comparison(results)
     return "\n".join(lines) + "\n"
+
+
+def _comparison(results: dict[str, list[dict]]) -> list[str]:
+    """How the cheap model's decisions compare with the stronger model's, if both ran."""
+    both = [(place, p) for place, photos in results.items() for p in photos if p["reference"]]
+    if not both:
+        return []
+
+    def cheap(photo: dict) -> bool:
+        """Whether the cheap model accepted it (only photos it judged are in `both`)."""
+        return photo["reason"] is None or not photo["reason"].startswith("AI check")
+
+    agree = sum(cheap(p) == p["reference"][0] for _, p in both)
+    lines = ["", "## Cheap model against the stronger one", ""]
+    lines.append(f"Both judged {len(both)} photos and agreed on {agree}.")
+    risky = [(pl, p) for pl, p in both if cheap(p) and not p["reference"][0]]
+    lost = [(pl, p) for pl, p in both if not cheap(p) and p["reference"][0]]
+    lines.append(
+        f"Accepted by the cheap model but rejected by the stronger one: {len(risky)}"
+        " (a wrong photo could get through)."
+    )
+    lines += [f"- {pl}: **{p['name']}** — {p['reference'][1]}" for pl, p in risky]
+    lines.append(
+        f"Rejected by the cheap model but accepted by the stronger one: {len(lost)}"
+        " (a good photo would be lost)."
+    )
+    lines += [f"- {pl}: **{p['name']}** — {p['reason']}" for pl, p in lost]
+    return lines
 
 
 def recent_places(state_dir: Path, days: int) -> list[str]:
@@ -238,6 +280,11 @@ async def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=Path("image-check"))
     parser.add_argument("--max-images", type=int, default=6, help="accepted photos saved per place")
     parser.add_argument("--no-ai", action="store_true", help="skip the AI check")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="also run the stronger model on the same photos and show where the two differ",
+    )
     args = parser.parse_args()
 
     places = args.place or (recent_places(args.state_dir, args.days) if args.state_dir else [])
@@ -252,7 +299,7 @@ async def main() -> int:
         for place in places:
             results[place] = await photos_for(client, place)
             if use_ai:
-                await check_with_ai(client, place, results[place])
+                await check_with_ai(client, place, results[place], args.compare)
             await save_thumbnails(client, place, results[place], args.out_dir, args.max_images)
     print(render(results, args.max_images, ai_note), end="")
     if use_ai:

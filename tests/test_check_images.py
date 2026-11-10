@@ -191,3 +191,62 @@ async def test_no_more_than_the_limit_goes_to_the_ai(monkeypatch):
     assert len(judged) == check_images._MAX_JUDGED
     assert sum(p["usable"] for p in photos) == check_images._MAX_JUDGED
     assert photos[-1]["reason"] == "not checked (limit per place)"
+
+
+async def test_compare_mode_records_the_stronger_models_opinion_and_the_cheap_one_decides(monkeypatch):
+    good, wrong = _record("Main street.jpg"), _record("St Elmo.jpg", "article")
+    answers = {
+        # (file, model): verdict. The cheap model wrongly accepts St Elmo; the strong one rejects it
+        ("Main street.jpg", check_images.llm.PHOTO_MODEL): _Verdict(True),
+        ("Main street.jpg", check_images.llm.PHOTO_REFERENCE_MODEL): _Verdict(True),
+        ("St Elmo.jpg", check_images.llm.PHOTO_MODEL): _Verdict(True),
+        ("St Elmo.jpg", check_images.llm.PHOTO_REFERENCE_MODEL): _Verdict(False, reason="names St. Elmo"),
+    }
+
+    async def fake_judge(place, image, media_type, name, description, source, model=None):
+        return answers[(name, model or check_images.llm.PHOTO_MODEL)]
+
+    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+
+    await check_images.check_with_ai(_FakeClient(), "Afton, Nevada", [good, wrong], compare=True)
+
+    assert good["usable"] and wrong["usable"]  # the cheap model decides
+    assert wrong["reference"] == (False, "names St. Elmo")
+    report = check_images.render({"Afton, Nevada": [good, wrong]})
+    assert "Both judged 2 photos and agreed on 1." in report
+    assert "Accepted by the cheap model but rejected by the stronger one: 1" in report
+    assert "- Afton, Nevada: **St Elmo.jpg** — names St. Elmo" in report
+    assert "Rejected by the cheap model but accepted by the stronger one: 0" in report
+
+
+async def test_compare_mode_shows_good_photos_the_cheap_model_would_lose(monkeypatch):
+    photo = _record("Main street.jpg")
+
+    async def fake_judge(place, image, media_type, name, description, source, model=None):
+        if model == check_images.llm.PHOTO_REFERENCE_MODEL:
+            return _Verdict(True)
+        return _Verdict(False, reason="unsure where", place="unsure")
+
+    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+
+    await check_images.check_with_ai(_FakeClient(), "Alpha", [photo], compare=True)
+
+    report = check_images.render({"Alpha": [photo]})
+    assert "Rejected by the cheap model but accepted by the stronger one: 1" in report
+    assert "AI check (place: unsure): unsure where" in report
+
+
+async def test_without_compare_the_stronger_model_is_not_called(monkeypatch):
+    photo = _record("Main street.jpg")
+    models: list = []
+
+    async def fake_judge(place, image, media_type, name, description, source, model=None):
+        models.append(model)
+        return _Verdict(True)
+
+    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+
+    await check_images.check_with_ai(_FakeClient(), "Alpha", [photo])
+
+    assert models == [None]  # only the default (cheap) model
+    assert "Cheap model against the stronger one" not in check_images.render({"Alpha": [photo]})

@@ -13,6 +13,10 @@ on:
         description: "Usable photos saved per place"
         type: number
         default: 6
+      compare_models:
+        description: "Also run the stronger model on the same photos and show where the two differ (costs more)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -46,7 +50,8 @@ jobs:
       - name: Check images
         run: |
           python scripts/check_images.py --state-dir "$STATE_DIR" --days "${{ inputs.days }}" \
-            --max-images "${{ inputs.max_images }}" --out-dir image-check | tee image-check.md
+            --max-images "${{ inputs.max_images }}" --out-dir image-check \
+            ${{ inputs.compare_models && '--compare' || '' }} | tee image-check.md
           cat image-check.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep the photos

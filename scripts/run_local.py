@@ -36,7 +36,7 @@ import asyncpg
 import pgserver
 from dotenv import load_dotenv
 
-from db.private_costs import export_encrypted
+from db.cost_store import push
 from db.state import export_state, import_state
 from pipeline.review import reject_candidates, rejected_urls
 from scheduler.run_pipeline import run_once
@@ -95,25 +95,24 @@ def _push_shared_state(message: str) -> None:
     print(f"Saved state to the '{DATA_BRANCH}' branch.")
 
 
-def _save_costs(database_url: str, state_dir: Path) -> None:
-    """Save this run's costs, encrypted so they stay private even on a public repository.
+def _save_costs(database_url: str) -> None:
+    """Copy this run's costs to the private cost database (COST_DATABASE_URL).
 
-    Without COST_PUBLIC_KEY nothing is saved: costs are never written in the clear.
-    A problem here must not stop the rest of the state from being saved.
+    Costs are never written to the saved state. Without the database nothing is saved.
+    A problem here must not stop the rest of the state from being saved, and the message
+    names only the kind of error, since a connection error can quote the host.
     """
-    key = os.getenv("COST_PUBLIC_KEY", "").strip()
-    if not key:
-        print("COST_PUBLIC_KEY is not set, so this run's costs were not saved.")
+    url = os.getenv("COST_DATABASE_URL", "").strip()
+    if not url:
+        print("COST_DATABASE_URL is not set, so this run's costs were not saved.")
         return
-    name = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + (
-        f"-{os.environ['GITHUB_RUN_ID']}" if os.getenv("GITHUB_RUN_ID") else ""
-    )
+    name = os.getenv("GITHUB_RUN_ID") or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     try:
-        saved = asyncio.run(export_encrypted(database_url, state_dir, key, name))
+        saved = asyncio.run(push(database_url, url, name))
     except Exception as exc:  # noqa: BLE001
-        print(f"Could not save this run's costs: {exc!r}")
+        print(f"Could not save this run's costs to the cost database ({type(exc).__name__}).")
         return
-    print(f"Saved {saved} cost row(s), encrypted.")
+    print(f"Saved {saved} cost row(s) to the cost database.")
 
 
 def _explain(exc: anthropic.APIStatusError) -> str:
@@ -197,7 +196,7 @@ def main() -> int:
         # forgetting it would mean posting the same place again.
         if state_dir:
             asyncio.run(export_state(database_url, state_dir))
-            _save_costs(database_url, state_dir)
+            _save_costs(database_url)
             if args.shared:
                 _push_shared_state(f"State after {'publishing' if args.publish else 'previewing'} {produced} post(s)")
         server.cleanup()

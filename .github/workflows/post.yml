@@ -39,9 +39,9 @@ jobs:
       POSTS: ${{ inputs.posts || 1 }}
       PREVIEW_DIR: previews
       STATE_DIR: state
-      # Public half of the key that keeps cost data private (see scripts/cost_keys.py).
-      # Without it, costs are not saved.
-      COST_PUBLIC_KEY: ${{ vars.COST_PUBLIC_KEY }}
+      # Address of the private database that holds what each place costs. Costs are never
+      # saved in this repository. Without it, costs are not saved.
+      COST_DATABASE_URL: ${{ secrets.COST_DATABASE_URL }}
 
     steps:
       - uses: actions/checkout@v4

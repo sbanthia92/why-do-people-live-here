@@ -22,7 +22,7 @@ def _cost(candidate_id, stage, usd, when):
 
 
 def _state(tmp_path: Path) -> list[dict]:
-    """Write the places and posts to `tmp_path`; returns the cost rows (kept apart: encrypted)."""
+    """Write the places and posts to `tmp_path`; returns the cost rows (kept apart: they live in the cost database)."""
     _write(
         tmp_path,
         "candidates",
@@ -103,3 +103,16 @@ def test_posts_from_before_tracking_are_counted_but_not_priced(tmp_path):
     assert "**Cost per post:** $0.50" in report
     assert "1 post(s) went out before costs were tracked." in report
     assert "| 11 Nov | Beta | – |" in report
+
+
+def test_cost_rows_are_matched_to_places_by_wikipedia_url_not_by_id():
+    candidates = [{"id": 7, "wikipedia_url": "https://en.wikipedia.org/wiki/Alpha"}]
+    costs = [
+        {"wikipedia_url": "https://en.wikipedia.org/wiki/Alpha", "stage": "writing", "usd": "0.1"},
+        {"wikipedia_url": "https://en.wikipedia.org/wiki/Gone", "stage": "writing", "usd": "0.2"},
+    ]
+
+    matched = cost_report.attach_places(costs, candidates)
+
+    # A place the state no longer knows still counts toward spend, under id 0
+    assert [row["candidate_id"] for row in matched] == [7, 0]

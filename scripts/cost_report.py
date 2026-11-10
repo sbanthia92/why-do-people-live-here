@@ -1,26 +1,29 @@
 """Print a Markdown cost report for the last week. Run it on your own computer.
 
-Reads the posts the daily run keeps on the `data` branch, and the costs it saved there
-encrypted (see db/private_costs.py), which only your private key can open. Costs never leave
-your computer in the clear. A post's cost is everything spent on its place, including
-research done on earlier days.
+Costs come from the private cost database (COST_DATABASE_URL, in `.env` or the environment);
+the posts and places come from the `data` branch. Costs are never saved in the repository.
+A post's cost is everything spent on its place, including research done on earlier days.
 
 Usage:  python scripts/cost_report.py --pull [--days 7]
-        python scripts/cost_report.py --state-dir DIR [--key-file PATH] [--days 7]
+        python scripts/cost_report.py --state-dir DIR [--days 7]
 """
 
 import argparse
+import asyncio
 import json
+import os
 import subprocess
 import sys
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from db.private_costs import DEFAULT_KEY_FILE, read_encrypted
+from db.cost_store import fetch
 
 
 def _rows(state_dir: Path, table: str) -> list[dict]:
@@ -129,20 +132,30 @@ def _pull(state_dir: Path) -> None:
         )
 
 
+def attach_places(costs: list[dict], candidates: list[dict]) -> list[dict]:
+    """Give each cost row the id its place has in this state, matched by Wikipedia URL.
+
+    A place the state does not know (it was reset since) gets id 0, so its spend still counts.
+    """
+    ids = {c["wikipedia_url"]: c["id"] for c in candidates}
+    return [{**row, "candidate_id": ids.get(row["wikipedia_url"], 0)} for row in costs]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--state-dir", type=Path, default=ROOT / ".state")
     parser.add_argument("--pull", action="store_true", help="fetch the latest data branch first")
-    parser.add_argument("--key-file", type=Path, default=DEFAULT_KEY_FILE)
     parser.add_argument("--days", type=int, default=7)
     args = parser.parse_args()
 
-    if not args.key_file.exists():
-        print(f"No private key at {args.key_file}. Make one with: python scripts/cost_keys.py")
+    load_dotenv(ROOT / ".env")
+    url = os.getenv("COST_DATABASE_URL", "").strip()
+    if not url:
+        print("COST_DATABASE_URL is not set. Put it in .env or the environment.")
         return 2
     if args.pull:
         _pull(args.state_dir)
-    costs = read_encrypted(args.state_dir, args.key_file.read_text().strip())
+    costs = attach_places(asyncio.run(fetch(url)), _rows(args.state_dir, "candidates"))
     print(build_report(args.state_dir, datetime.now(UTC), args.days, costs), end="")
     return 0
 

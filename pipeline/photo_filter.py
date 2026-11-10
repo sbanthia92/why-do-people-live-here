@@ -90,8 +90,9 @@ async def judge_photo(
     file_name: str,
     description: str,
     source: str,
+    model: str | None = None,
 ) -> PhotoVerdict:
-    """Ask Claude whether a photo is a real photograph of `place`."""
+    """Ask Claude whether a photo is a real photograph of `place` (on PHOTO_MODEL unless told)."""
     question = (
         f"Place: {place}\n"
         f"File name: {file_name}\n"
@@ -114,5 +115,5 @@ async def judge_photo(
         user=content,
         output_format=PhotoVerdict,
         effort="low",
-        model=llm.PHOTO_MODEL,
+        model=model or llm.PHOTO_MODEL,
     )

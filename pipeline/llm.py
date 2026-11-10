@@ -17,12 +17,17 @@ MODEL = "claude-opus-5-5"
 # of tokens of web pages. Finding and quoting sources needs less judgement than the
 # brief, the editor's gates or the writing, so it runs on the cheaper model.
 SEARCH_MODEL = "claude-sonnet-5-5"
-# Looking at a photo and saying what it shows is simple work for the cheaper model. A cheaper
-# one (Haiku) could do it for about a twentieth of the price: try it once real token counts are known.
-PHOTO_MODEL = SEARCH_MODEL
+# Looking at a photo and saying what it shows is simple work, so it runs on the cheapest model.
+# The stronger model is the reference the photo check can be compared against.
+PHOTO_MODEL = "claude-haiku-5-5"
+PHOTO_REFERENCE_MODEL = SEARCH_MODEL
+# Models that have no server-side fallback after a safety refusal: sending `fallbacks` to them
+# either changes nothing or is rejected, so it is left off.
+_NO_FALLBACK = {PHOTO_MODEL}
 # US dollars per million tokens (input, output), from Anthropic's price list on
 # 2026-09-25. Only used to print an estimate; update when prices change.
-_PRICES = {MODEL: (4.00, 20.00), SEARCH_MODEL: (2.00, 10.00)}
+# Haiku's price is for prompts of up to 100,000 tokens, which every request here is.
+_PRICES = {MODEL: (4.00, 20.00), SEARCH_MODEL: (2.00, 10.00), PHOTO_MODEL: (0.10, 0.50)}
 # US dollars per web search, from Anthropic's price list. Charged on top of the tokens the
 # search reads. Update when prices change.
 _SEARCH_FEE_USD = 0.01
@@ -168,6 +173,8 @@ async def parse(
 
     `user` is text, or a list of content blocks (for example an image and a question).
     """
+    # A safety refusal is re-run on a fallback model, except where there is none
+    fallback = {} if model in _NO_FALLBACK else {"betas": _BETAS, "fallbacks": "default"}
     async with _request_slot():
         response = await get_client().beta.messages.parse(
             model=model,
@@ -176,8 +183,7 @@ async def parse(
             messages=[{"role": "user", "content": user}],
             output_format=output_format,
             output_config={"effort": effort},
-            betas=_BETAS,
-            fallbacks="default",
+            **fallback,
         )
     _record_usage(response, _STAGES.get(output_format.__name__, output_format.__name__.lower()))
     if response.stop_reason == "refusal":

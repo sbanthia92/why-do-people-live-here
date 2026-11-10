@@ -79,11 +79,15 @@ Every run ends by printing its Claude token use and an estimated cost. The web s
 
 The cost of each place is also saved: Claude tokens, Anthropic's per-search fee and X's per-post charge, by stage. They are estimates from prices kept in the code. Costs are never shown in a post or a preview, and they are **not stored in this repository at all**: each run copies them to a separate private Postgres database. Public Actions logs show tokens, not dollars.
 
-One-time setup:
+One-time setup, with [Neon](https://neon.com) (a free hosted Postgres; the data is a few rows a day). The labels in their console may differ a little:
 
-1. Create a Postgres database somewhere private (a free hosted one is enough; the data is a few rows a day). Copy its connection string and make sure it ends with `?sslmode=require`. Treat it like a password.
-2. Add it as a repository **secret** (not a variable) named `COST_DATABASE_URL` (Settings, Secrets and variables, Actions, Secrets). Until you do, costs are not saved.
-3. Put the same string in your local `.env` as `COST_DATABASE_URL=...` so the report can read it.
+1. Sign up at neon.com and create a project. Any region works.
+2. In the project, open **Connect** and copy the connection string. Turn **connection pooling off**, so the string is for the direct connection (its host has no `-pooler` in it). It looks like `postgresql://user:password@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require`. A `channel_binding=require` at the end is fine: it is ignored.
+3. Add it as a repository **secret** (not a variable) named `COST_DATABASE_URL`: Settings, Secrets and variables, Actions, Secrets, New repository secret.
+4. Put the same string in your local `.env` as `COST_DATABASE_URL=...` (that file is not committed).
+5. Check the connection: run `python scripts/cost_report.py`. It should print "No costs have been recorded yet". If it shows an error, read it, but do not share the string.
+
+Until step 3, costs are not saved. The string contains a password: if it leaks, reset the password in Neon.
 
 Then, whenever you want the report, run `python scripts/cost_report.py --pull`. It reads the costs from the database and the posts from the saved state, and prints spend for the last 7 days, cost per post, where the money went by stage, a link to each post, and money spent on places that were not posted. If the database cannot be reached at the end of a run, that run's costs are lost. Runs started with plain `python scripts/run_local.py` keep their costs in the local database only.
 

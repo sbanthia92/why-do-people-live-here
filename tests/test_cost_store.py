@@ -7,7 +7,7 @@ import pytest
 
 pgserver = pytest.importorskip("pgserver")
 
-from db.cost_store import _tls_kwargs, fetch, push
+from db.cost_store import _clean_url, _tls_kwargs, fetch, push
 
 _SCHEMA = (Path(__file__).parent.parent / "db" / "schema.sql").read_text()
 
@@ -115,3 +115,18 @@ def test_a_database_on_this_machine_needs_no_tls():
     assert _tls_kwargs("postgresql://u:p@localhost/costs") == {}
     assert _tls_kwargs("postgresql://u:p@127.0.0.1:5432/costs") == {}
     assert _tls_kwargs("postgresql://postgres:@/postgres?host=/tmp/pg-socket") == {}
+
+
+def test_channel_binding_is_dropped_but_tls_and_the_rest_are_kept():
+    url = "postgresql://u:p%40ss@ep-x.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+
+    cleaned = _clean_url(url)
+
+    assert cleaned == "postgresql://u:p%40ss@ep-x.aws.neon.tech/neondb?sslmode=require"
+    assert _tls_kwargs(cleaned) == {}  # still asks for TLS
+
+
+def test_a_url_without_channel_binding_is_unchanged():
+    url = "postgresql://u:p@db.example.com/costs?sslmode=require"
+    assert _clean_url(url) == url
+    assert _clean_url("postgresql://u:p@db.example.com/costs") == "postgresql://u:p@db.example.com/costs"

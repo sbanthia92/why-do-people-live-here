@@ -7,7 +7,7 @@ holds no key that could be used to read it. The connection must use TLS unless t
 is on the same machine.
 """
 
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import asyncpg
 
@@ -29,6 +29,14 @@ CREATE TABLE IF NOT EXISTS costs (
     PRIMARY KEY (run_name, wikipedia_url, stage, model)
 )
 """
+
+
+def _clean_url(url: str) -> str:
+    """The URL without `channel_binding`, which Neon adds but asyncpg would send to the server
+    as a setting, and the server would refuse. TLS is unaffected: `sslmode` stays."""
+    parsed = urlparse(url)
+    query = [(k, v) for k, v in parse_qs(parsed.query).items() if k != "channel_binding"]
+    return urlunparse(parsed._replace(query=urlencode([(k, vs[0]) for k, vs in query])))
 
 
 def _tls_kwargs(url: str) -> dict:
@@ -68,7 +76,7 @@ async def push(local_url: str, remote_url: str, run_name: str) -> int:
         await local.close()
     if not rows:
         return 0
-    remote = await asyncpg.connect(remote_url, **_tls_kwargs(remote_url))
+    remote = await asyncpg.connect(_clean_url(remote_url), **_tls_kwargs(remote_url))
     try:
         await remote.execute(_SCHEMA)
         await remote.executemany(
@@ -101,7 +109,7 @@ async def push(local_url: str, remote_url: str, run_name: str) -> int:
 
 async def fetch(remote_url: str) -> list[dict]:
     """Every saved cost row, oldest first. `recorded_at` is an ISO timestamp string."""
-    remote = await asyncpg.connect(remote_url, **_tls_kwargs(remote_url))
+    remote = await asyncpg.connect(_clean_url(remote_url), **_tls_kwargs(remote_url))
     try:
         await remote.execute(_SCHEMA)  # a fresh database reads as empty, not as an error
         rows = await remote.fetch("SELECT * FROM costs ORDER BY recorded_at, run_name")

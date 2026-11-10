@@ -55,6 +55,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The daily workflow uses a persistent `DATABASE_URL` secret instead of a throwaway Postgres container, and takes the Wikimedia contact from a repository variable.
 
 ### Fixed
+- A `channel_binding=require` setting in the cost database URL (Neon adds it) is ignored instead of being sent to the server, which would have refused the connection.
 - A temporary API error (server error, rate limit, timeout) while researching one place no longer ends the whole run: that place is left for a later run and the next candidate is tried. A request the API rejects outright skips the place; running out of credits or a bad API key still stops the run.
 - The map card names the nearest major city in its panel but did not always label it on the map, where only the five largest cities in view were shown.
 - An empty Anthropic credit balance was logged as "web search unavailable" and then crashed with a traceback. It now stops the run with one clear line, and the state is still saved.

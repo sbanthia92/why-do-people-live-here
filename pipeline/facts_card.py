@@ -17,14 +17,14 @@ from rich.console import Console
 
 from pipeline import llm
 from pipeline.map_card import (
-    AQUA,
-    CORAL,
     CREAM,
     MUTED,
     NAVY,
     ORANGE,
+    RED,
     RING,
     SEA,
+    YELLOW,
     _fit,
     _font,
     _wrap,
@@ -38,7 +38,7 @@ MIN_FACTS, MAX_FACTS = 3, 4
 _ASKED = 6
 _MAX_FIGURE_CHARS = 12
 _MAX_CAPTION_CHARS = 70
-_ACCENTS = (ORANGE, AQUA, CORAL, ORANGE)
+_ACCENTS = (YELLOW, ORANGE, RED, YELLOW)
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
 
 

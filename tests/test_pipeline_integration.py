@@ -83,7 +83,9 @@ class FakeWorld:
             return FactCheck(unsupported=[])
         assert output_format is Posts
         self.written.append(place)
-        return Posts(posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."])
+        return Posts(
+            posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."], sources=[1]
+        )
 
     async def post_to_x(self, post_text, thread_parts, image_url, dry_run=False, alt_text=None):
         self.posted.append(
@@ -137,7 +139,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert preview.startswith("# Alpha Island — thread of 3\n")
         assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
         assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
-        assert "**4/4**" in preview and "> Source: Wikipedia, “Alpha Island”" in preview
+        assert "**4/4**" in preview and "> Sources: Wikipedia, “Alpha Island”; Example" in preview
         assert "> A new remote, harsh or strange place every day. Follow for more." in preview
         assert "**Image on the first post:** Map showing Alpha Island." in preview
         assert "- **Independently backed:** yes. backed by [W][1]" in preview
@@ -180,8 +182,9 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
     log = await db.fetchrow("SELECT region, story_category FROM variety_log")
     assert tuple(log) == ("Oceania", "island_community")
     # The closing reply carries the source link
+    # The real run reuses the previewed text, including the outlets named in the closing reply
     assert world.posted[-1]["replies"][-1] == (
-        "Source: Wikipedia, “Alpha Island”\n\n"
+        "Sources: Wikipedia, “Alpha Island”; Example\n\n"
         "A new remote, harsh or strange place every day. Follow for more."
     )
     # The first post carries the map card, labelled with the story type and region

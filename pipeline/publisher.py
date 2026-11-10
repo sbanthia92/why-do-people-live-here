@@ -17,7 +17,7 @@ from pipeline.candidate_selector import _HEADERS
 from pipeline.image_sourcer import get_image_for_candidate
 from pipeline.map_card import map_card_for_candidate
 from pipeline.preview import write_preview
-from pipeline.xtext import weighted_length
+from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
 console = Console()
 
@@ -161,8 +161,9 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
     await db_pool.execute(
         """
         INSERT INTO posts
-            (candidate_id, post_text, thread_parts, image_url, image_credit, x_post_id, dry_run)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (candidate_id, post_text, thread_parts, image_url, image_credit, x_post_id, dry_run,
+             sources)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         """,
         candidate_id,
         post_data["post_text"],
@@ -171,6 +172,7 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
         post_data.get("image_credit"),
         post_data.get("x_post_id"),
         dry_run,
+        post_data.get("sources"),
     )
     await db_pool.execute(
         "UPDATE candidates SET status = $2, updated_at = now() WHERE id = $1",
@@ -191,22 +193,32 @@ async def persist_post(db_pool, candidate_id: int, post_data: dict) -> None:
 FOLLOW_LINE = "A new remote, harsh or strange place every day. Follow for more."
 
 
-def _footer(wikipedia_url: str, photo: dict | None) -> str:
+def _footer(wikipedia_url: str, photo: dict | None, sources: list[str] | None = None) -> str:
     """Closing reply: where the facts (and any photo) came from, and an invitation to follow.
 
+    `sources` are the other outlets the post's facts came from. They are named after the
+    Wikipedia article so a reader checks the right place; as many as fit in one post are kept.
     Photos are CC0 or public domain, so no credit is owed; the line is a courtesy and
     carries no links (a link would put the reply on X's link rate).
     """
     if _source_link_enabled():
-        lines = [f"Source: {wikipedia_url}"]
+        article = wikipedia_url
     else:
         title = urllib.parse.unquote(wikipedia_url.rstrip("/").split("/wiki/")[-1])
-        lines = [f"Source: Wikipedia, “{title.replace('_', ' ')}”"]
+        article = f"Wikipedia, “{title.replace('_', ' ')}”"
+    tail = []
     if photo:
         parts = [photo.get("credit"), photo["license"], "via Wikimedia Commons"]
-        lines.append("Photo: " + ", ".join(filter(None, parts)))
-    lines += ["", FOLLOW_LINE]
-    return "\n".join(lines)
+        tail.append("Photo: " + ", ".join(filter(None, parts)))
+    tail += ["", FOLLOW_LINE]
+
+    names = list(sources or [])
+    while True:
+        first = f"Sources: {'; '.join([article, *names])}" if names else f"Source: {article}"
+        footer = "\n".join([first, *tail])
+        if not names or weighted_length(footer) <= MAX_POST_LENGTH:
+            return footer
+        names.pop()
 
 
 async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool = False) -> None:
@@ -230,7 +242,7 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
     image_source = card["path"] if card else photo["url"] if photo else None
     alt_text = card["alt_text"] if card else None
 
-    replies = [*(content["thread_parts"] or []), _footer(url, photo)]
+    replies = [*(content["thread_parts"] or []), _footer(url, photo, content.get("sources"))]
 
     x_post_id = await post_to_x(
         content["post_text"], replies, image_source, dry_run=dry_run, alt_text=alt_text
@@ -262,6 +274,8 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
         {
             "post_text": content["post_text"],
             "thread_parts": content["thread_parts"],
+            # Kept so that a previewed post is published with the same closing reply
+            "sources": content.get("sources"),
             "image_url": Path(card["path"]).name if card else photo["url"] if photo else None,
             # The Commons page records which file was used and the licence it had then
             "image_credit": " ".join(

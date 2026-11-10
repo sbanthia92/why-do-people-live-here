@@ -113,7 +113,7 @@ The writer sees only the brief and the editor's notes. It chooses the length: on
 Each draft then faces two checks:
 
 - **Format, in code:** 1–4 posts, each at most 280 characters by X's counting rules (links count as 23, some symbols as 2).
-- **Fact check, a separate model call:** every number, date, name, quotation and causal claim is compared with the brief. Anything unsupported, overstated ("about" dropped, "is said to" made flat) or disputed is returned.
+- **Fact check, a separate model call:** every number, date, name, quotation and causal claim is compared with the brief. Anything unsupported, overstated ("about" dropped, "is said to" made flat), disputed, or widened in scope is returned: "whole" or "all" where the brief says some, or a statistic without the area or year the brief gives for it. The writer is told to keep both ("the 2011 census counted 27,458 vacant houses in Bhilai Nagar").
 
 A failing draft goes back to the writer with the specific problems, at most twice. If it still fails, the place is `skipped`.
 
@@ -122,7 +122,7 @@ A failing draft goes back to the writer with the specific problems, at most twic
 `run_publish` assembles the images, the replies and the record:
 
 - **Image:** a map card (on by default), or if that is impossible and `POST_IMAGES=true`, a public-domain Commons photo.
-- **Replies:** the thread's remaining posts, then a footer naming the source article and a follow line.
+- **Replies:** the thread's remaining posts, then a footer naming the sources and a follow line. The footer names the Wikipedia article and then the other outlets whose facts the writer says it used ("Sources: Wikipedia, “Bhilai”; Question of Cities; Britannica"), as many as fit in one post. The writer returns source numbers from the brief's tags; `pipeline/attribution.py` turns them into outlet names from the saved source list, so a name cannot be invented, and names carry no dots so X does not turn them into links.
 - **Post:** `tweepy` to the X v2 API; media upload uses v1.1, the only place it exists.
 - **Record:** a `posts` row, the candidate set to `posted` (or `approved` for a dry run), and a Markdown preview file.
 
@@ -169,7 +169,7 @@ Six tables, defined in `db/schema.sql`:
 | `candidates` | place, URL (unique), story category, region, status, layer 1 result | the state machine above |
 | `research` | web sources (JSONB), brief | `wikipedia_extract` is not saved to state |
 | `assessments` | both verdicts, both reasons, writer notes, `passed` | |
-| `posts` | text, thread parts (JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
+| `posts` | text, thread parts (JSONB), outlets named in the closing reply (`sources`, JSONB), image, X post ID, `dry_run` | dry-run rows are the "previewed text" |
 | `variety_log` | region and story category of each real post | see 8.4 |
 | `costs` | one row per place, stage and model: requests, tokens, dollars. Lives only in the run's throwaway database, then is copied to the private cost database. Never saved in the repository | see 6.3 and 8.17 |
 
@@ -334,7 +334,7 @@ Each entry says what was chosen, what it buys, and what it costs.
 
 - **Chosen:** the closing reply says "Source: Wikipedia, “Title”" with no URL (`SOURCE_LINK=false`).
 - **Why:** X is pay-per-use, about $0.015 for a plain post and about $0.20 with a link.
-- **Cost:** readers must search for the source. An easy toggle exists if pricing changes. The follow line rides on the source reply so it adds no extra post.
+- **Cost:** readers must search for the source. Until the footer named the other outlets, it said only "Wikipedia" even when most facts came from elsewhere, so a reader checking Wikipedia could not find them (it happened with Bhilai's vacant-house count). The outlet list is the writer's own report of what it used and is not independently checked; outlet names are derived from web addresses and can read oddly ("Bbc"). An easy toggle exists if pricing changes. The follow line rides on the source reply so it adds no extra post.
 
 ### 8.14 Partial threads count as posted
 

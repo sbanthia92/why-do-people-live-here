@@ -57,7 +57,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **What was previewed is what gets posted.** A dry-run preview marks the candidate `approved`; the next real run publishes that exact text first. The owner can veto a preview by adding the `rejected` label to its issue (`pipeline/review.py`); the next run marks that place `skipped`. Rejection is a veto, not a required approval.
 - **A thread that fails part-way is still recorded as posted**, so the hook is never published twice.
 - **Candidates resume**: `pending → researched → assessed → approved/posted`, or `skipped`. A failed run continues from where it stopped. Up to five candidates tried per run.
-- **Closing reply** names the source and ends with a follow line ("A new remote, harsh or strange place every day. Follow for more.").
+- **Closing reply** names the Wikipedia article plus the other outlets the writer used (names built in `pipeline/attribution.py` from the saved source list, no links, saved in `posts.sources`) and ends with a follow line ("A new remote, harsh or strange place every day. Follow for more.").
 
 ### Images and licensing
 - **Map cards on by default** (`MAP_CARDS`), drawn from public-domain Natural Earth data: no licence risk, has alt text, skipped when Wikipedia has no coordinates. The nearest major city is always labelled (PR #21).

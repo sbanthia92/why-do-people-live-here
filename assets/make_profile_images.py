@@ -55,7 +55,7 @@ def _pin(draw: ImageDraw.ImageDraw, cx: float, top: float, size: float, outline:
 
     if outline:
         shape(outline, NAVY)
-    shape(0, ORANGE)
+    shape(0, RED)
     draw.text((cx, cy - r * 0.04), "?", font=_font(int(r * 1.45), bold=True), fill=NAVY, anchor="mm")
 
 

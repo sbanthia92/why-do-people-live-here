@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 
 from pipeline import llm
+from pipeline.attribution import outlets_used
 from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
 # Given more room the writer fills it: with a cap of five, every thread came back as five.
@@ -17,6 +18,13 @@ console = Console()
 class Posts(BaseModel):
     posts: list[str] = Field(
         description="The post, or the posts of a thread in order with the hook first."
+    )
+    sources: list[int] = Field(
+        default_factory=list,
+        description=(
+            "The numbers of the web sources ([1], [2], ...) whose facts appear in the posts."
+            " Leave out sources you did not use."
+        ),
     )
 
 
@@ -32,7 +40,13 @@ adjective. Do not use hashtags, emojis, or tourism-brochure language.
 Accuracy: use only facts stated in the research brief. The brief's source tags ([W], \
 [1], ...) are for your reference — never reproduce them. If the brief marks a claim as \
 disputed, either leave it out or say it is disputed. The editor's notes tell you what \
-is strongest in the brief; build on those.
+is strongest in the brief; build on those. Also list the numbers of the web sources whose \
+facts you used: the closing reply names them, so readers can check the right place.
+
+Scope: a figure is only true for the place and time it was measured. When the brief gives a \
+count or statistic with its area or year, keep both ("the 2011 census counted 27,458 vacant \
+houses in Bhilai Nagar"), and do not stretch what a source saw: "some blocks in Sector 6" must \
+not become "whole blocks" or "the city".
 
 Length: you decide it from the material. Every post is at most {MAX_POST_LENGTH} characters.
 - One post, when the whole answer fits: open with the fact that makes living there \
@@ -76,7 +90,10 @@ and statement of cause. Report a claim when:
 that is not word for word;
 - it is stronger than the brief: "about" or "up to" dropped, a range narrowed to one \
 number, "is said to" turned into fact;
-- the brief marks it as disputed or uncertain and the draft states it flatly.
+- the brief marks it as disputed or uncertain and the draft states it flatly;
+- it widens the scope: "whole", "all", "most" or "every" where the brief says some or one; a \
+figure given for one area or year presented as if it covered another; or a count or statistic \
+stripped of the area or year the brief gives for it.
 
 Do not report: rounding the brief itself would accept (1,412 km as "about 1,400 km"), \
 plain rewording, the account's framing question, or the absence of source tags, which \
@@ -109,7 +126,12 @@ async def check_facts(place_name: str, raw_research: str, posts: list[str]) -> l
 
 
 async def generate_posts(place_name: str, raw_research: str, writer_notes: str | None) -> list[str]:
-    """Write the post for a place: a list of one post, or of a thread's posts in order.
+    """The posts for a place, without the list of sources used (see `write`)."""
+    return (await write(place_name, raw_research, writer_notes)).posts
+
+
+async def write(place_name: str, raw_research: str, writer_notes: str | None) -> Posts:
+    """Write the post for a place: one post or a thread in order, and the sources used.
 
     A draft has to pass two checks before it is returned: the format limits, checked
     in code, and a fact check of every claim against the research brief. A draft that
@@ -123,7 +145,8 @@ async def generate_posts(place_name: str, raw_research: str, writer_notes: str |
     )
     prompt = user
     for attempt in range(MAX_REWRITES + 1):
-        posts = (await llm.parse(system=_SYSTEM, user=prompt, output_format=Posts)).posts
+        draft = await llm.parse(system=_SYSTEM, user=prompt, output_format=Posts)
+        posts = draft.posts
 
         if issue := _format_problem(posts):
             feedback = f"Your previous draft broke the format: {issue}. Fix it."
@@ -132,7 +155,7 @@ async def generate_posts(place_name: str, raw_research: str, writer_notes: str |
             if not unsupported:
                 if attempt:
                     console.log(f"[writer] {place_name}: passed after {attempt} rewrite(s)")
-                return posts
+                return draft
             issue = "; ".join(f'post {c.post}: "{c.claim}" ({c.problem})' for c in unsupported)
             console.log(f"[writer] {place_name}: fact check found {len(unsupported)} problem(s)")
             feedback = (
@@ -153,13 +176,15 @@ async def run_content_generation(db_pool, candidate_id: int) -> dict:
     """Write the content for a candidate.
 
     Returns {"post_text": first post, "thread_parts": follow-up posts, or None for a
-    single post}.
+    single post, "sources": names of the outlets whose facts were used}.
     """
     row = await db_pool.fetchrow(
         """
         SELECT c.place_name,
                (SELECT raw_research FROM research WHERE candidate_id = c.id
                  ORDER BY researched_at DESC LIMIT 1) AS raw_research,
+               (SELECT web_sources FROM research WHERE candidate_id = c.id
+                 ORDER BY researched_at DESC LIMIT 1) AS web_sources,
                (SELECT writer_notes FROM assessments WHERE candidate_id = c.id
                  ORDER BY assessed_at DESC LIMIT 1) AS writer_notes
         FROM candidates c
@@ -167,5 +192,9 @@ async def run_content_generation(db_pool, candidate_id: int) -> dict:
         """,
         candidate_id,
     )
-    posts = await generate_posts(row["place_name"], row["raw_research"], row["writer_notes"])
-    return {"post_text": posts[0], "thread_parts": posts[1:] or None}
+    draft = await write(row["place_name"], row["raw_research"], row["writer_notes"])
+    return {
+        "post_text": draft.posts[0],
+        "thread_parts": draft.posts[1:] or None,
+        "sources": outlets_used(draft.sources, row["web_sources"] or []),
+    }

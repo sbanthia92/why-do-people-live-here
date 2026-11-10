@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS costs (
     recorded_at   TIMESTAMPTZ DEFAULT now()
 );
 
+-- The outlets a post's facts came from, named in its closing reply. Safe to re-run.
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS sources JSONB;
+
 -- Migration from the earlier 0-10 scoring, which the two yes/no gates replaced.
 -- Safe to re-run: candidates that passed the old scoring count as assessed.
 DROP TABLE IF EXISTS scores;

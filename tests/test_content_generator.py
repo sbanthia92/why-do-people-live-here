@@ -104,17 +104,29 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
         "place_name": "Testville",
         "raw_research": "Brief [W].",
         "writer_notes": "Lead with the ferry.",
+        "web_sources": [
+            {"url": "https://www.britannica.com/place/Testville", "source_name": "Testville"},
+            {"url": "https://example.org/a", "source_name": "A page - Example"},
+        ],
     }
-    generate = AsyncMock(side_effect=[["One post."], ["Hook.", "2/ More.", "3/ End."]])
+    generate = AsyncMock(
+        side_effect=[
+            Posts(posts=["One post."]),
+            # 2 is used twice over; 9 matches no source and is ignored
+            Posts(posts=["Hook.", "2/ More.", "3/ End."], sources=[2, 1, 9]),
+        ]
+    )
 
-    with patch("pipeline.content_generator.generate_posts", new=generate):
+    with patch("pipeline.content_generator.write", new=generate):
         assert await run_content_generation(pool, 1) == {
             "post_text": "One post.",
             "thread_parts": None,
+            "sources": [],
         }
         assert await run_content_generation(pool, 1) == {
             "post_text": "Hook.",
             "thread_parts": ["2/ More.", "3/ End."],
+            "sources": ["Example", "Britannica"],
         }
     assert generate.call_args.args == ("Testville", "Brief [W].", "Lead with the ferry.")
 
@@ -132,3 +144,11 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
 )
 def test_weighted_length_counts_like_x(text: str, expected: int) -> None:
     assert weighted_length(text) == expected
+
+
+def test_the_prompts_ask_for_scope_and_the_check_rejects_widened_claims() -> None:
+    from pipeline.content_generator import _FACT_CHECK_SYSTEM, _SYSTEM
+
+    assert "area or year" in _SYSTEM and "web sources whose" in _SYSTEM.replace("\n", " ")
+    assert "widens the scope" in _FACT_CHECK_SYSTEM
+    assert "stripped of the area or year" in _FACT_CHECK_SYSTEM.replace("\n", " ")

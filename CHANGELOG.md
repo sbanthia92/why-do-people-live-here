@@ -56,6 +56,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The daily workflow uses a persistent `DATABASE_URL` secret instead of a throwaway Postgres container, and takes the Wikimedia contact from a repository variable.
 
 ### Fixed
+- The closing reply now names the outlets a post's facts came from, not only Wikipedia ("Sources: Wikipedia, “Bhilai”; Question of Cities; Britannica"), so readers check the right place. No links are added.
+- Statistics keep their scope: the writer must give the area and year the brief gives for a figure, and the fact check rejects claims that widen it ("whole", "all", a figure for one area presented as another).
 - A `channel_binding=require` setting in the cost database URL (Neon adds it) is ignored instead of being sent to the server, which would have refused the connection.
 - A temporary API error (server error, rate limit, timeout) while researching one place no longer ends the whole run: that place is left for a later run and the next candidate is tried. A request the API rejects outright skips the place; running out of credits or a bad API key still stops the run.
 - The map card names the nearest major city in its panel but did not always label it on the map, where only the five largest cities in view were shown.

@@ -236,3 +236,21 @@ async def test_failure_on_first_post_raises():
         pytest.raises(tweepy.TweepyException),
     ):
         await post_to_x("Hook.", None, None)
+
+
+def test_footer_names_the_other_outlets_after_the_article(monkeypatch):
+    monkeypatch.delenv("SOURCE_LINK", raising=False)
+    footer = _footer(_URL, None, ["Question of Cities", "Britannica"])
+    assert footer.startswith("Sources: Wikipedia, \u201cTestville\u201d; Question of Cities; Britannica\n\n")
+    assert "http" not in footer and "." not in footer.split("\n")[0]
+
+
+def test_footer_drops_outlets_from_the_end_until_it_fits_one_post(monkeypatch):
+    from pipeline.xtext import weighted_length
+
+    monkeypatch.delenv("SOURCE_LINK", raising=False)
+    footer = _footer(_URL, None, [f"Outlet number {i} of many" for i in range(20)])
+
+    assert weighted_length(footer) <= 280
+    assert "Outlet number 0 of many" in footer and "Outlet number 19 of many" not in footer
+    assert footer.endswith("Follow for more.")

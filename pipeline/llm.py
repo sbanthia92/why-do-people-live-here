@@ -19,11 +19,13 @@ MODEL = "claude-opus-5-5"
 SEARCH_MODEL = "claude-sonnet-5-5"
 # Looking at a photo and saying what it shows is simple work, so it runs on the cheapest model.
 # The stronger model is the reference the photo check can be compared against.
-PHOTO_MODEL = "claude-haiku-5-5"
+# The cheapest model, for small jobs that need little judgement
+CHEAP_MODEL = "claude-haiku-5-5"
+PHOTO_MODEL = CHEAP_MODEL
 PHOTO_REFERENCE_MODEL = SEARCH_MODEL
 # Models that have no server-side fallback after a safety refusal: sending `fallbacks` to them
 # either changes nothing or is rejected, so it is left off.
-_NO_FALLBACK = {PHOTO_MODEL}
+_NO_FALLBACK = {CHEAP_MODEL}
 # US dollars per million tokens (input, output), from Anthropic's price list on
 # 2026-09-25. Only used to print an estimate; update when prices change.
 # Haiku's price is for prompts of up to 100,000 tokens, which every request here is.
@@ -39,6 +41,7 @@ _STAGES = {
     "FactCheck": "fact check",
     "PhotoVerdict": "photo check",
     "KeyFacts": "facts card",
+    "OutletNames": "source names",
 }
 # Lets the API re-run a safety-declined request on Anthropic's recommended fallback
 # model inside the same call, instead of handing us a refusal.

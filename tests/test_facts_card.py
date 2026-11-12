@@ -111,3 +111,30 @@ def test_the_card_is_on_unless_switched_off(monkeypatch):
     assert facts_card.enabled()
     monkeypatch.setenv("FACTS_CARD", "false")
     assert not facts_card.enabled()
+
+
+async def test_a_figure_only_found_inside_a_longer_number_is_dropped():
+    """Kivalina: "80%" passed because "80" sat inside "280" and "1980s"; the brief said "Eighty"."""
+    brief = (
+        "Eighty percent of homes lack toilets [91]. The harvest fell from 179-280 lb in the early"
+        " 1980s [47]. Doughnuts cost $10.45 [79]. Some households hold up to 20 people [67]."
+        " The 2020 census counted 444 residents [W]. Milk is $8.75, or 1,280 cents [77]."
+    )
+    picked = _facts(
+        ("80%", "of homes lack toilets"),
+        ("$10.45", "a box of doughnuts"),
+        ("up to 20", "people in some households"),
+        ("444", "residents (2020 census)"),
+        ("$8.7", "milk"),  # a prefix of $8.75
+        ("280", "lb harvest"),  # the end of a range still counts as a whole number
+    )
+    with (
+        patch("pipeline.llm.parse", new=AsyncMock(return_value=picked)) as parse,
+        patch("pipeline.content_generator.check_facts", new=AsyncMock(return_value=[])),
+    ):
+        facts = await select_facts("Kivalina", brief)
+
+    assert [f["figure"] for f in facts] == ["$10.45", "up to 20", "444", "280"]
+    # The picker is told today's date, so it can skip predictions that have passed
+    assert parse.call_args.kwargs["user"].startswith("Today's date: ")
+    assert "date has passed" in parse.call_args.kwargs["system"]

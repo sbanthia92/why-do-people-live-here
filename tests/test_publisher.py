@@ -294,3 +294,9 @@ async def test_an_image_that_fails_to_upload_is_left_off_and_the_post_still_goes
         await post_to_x("Hook.", None, "/tmp/map.png", extra_images=extra)
 
     assert client.create_tweet.call_args.kwargs["media_ids"] == ["map-id"]
+
+
+def test_footer_never_names_more_than_three_outlets(monkeypatch):
+    monkeypatch.delenv("SOURCE_LINK", raising=False)
+    footer = _footer(_URL, None, ["One", "Two", "Three", "Four", "Five"])
+    assert footer.startswith("Sources: Wikipedia, \u201cTestville\u201d; One; Two; Three\n")

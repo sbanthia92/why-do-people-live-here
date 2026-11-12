@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from pipeline import costs
+from pipeline.attribution import MAX_OUTLETS
 from pipeline.candidate_selector import _HEADERS
 from pipeline.facts_card import enabled as _facts_card_enabled
 from pipeline.facts_card import facts_card_for_candidate
@@ -221,7 +222,7 @@ def _footer(wikipedia_url: str, photo: dict | None, sources: list[str] | None = 
         tail.append("Photo: " + ", ".join(filter(None, parts)))
     tail += ["", FOLLOW_LINE]
 
-    names = list(sources or [])
+    names = list(sources or [])[:MAX_OUTLETS]
     while True:
         first = f"Sources: {'; '.join([article, *names])}" if names else f"Source: {article}"
         footer = "\n".join([first, *tail])

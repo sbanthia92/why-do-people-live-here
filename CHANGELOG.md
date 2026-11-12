@@ -58,6 +58,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - The daily workflow uses a persistent `DATABASE_URL` secret instead of a throwaway Postgres container, and takes the Wikimedia contact from a repository variable.
 
 ### Fixed
+- The closing reply names at most three outlets, by their usual names ("Anchorage Daily News", not "Adn"), and skips website hosts such as Weebly. The first live run listed ten names built from web addresses.
+- Key-facts card: a figure must appear in the brief as a whole number ("80" no longer passes because of "280"), and predictions or deadlines that have already passed are not picked.
 - The closing reply now names the outlets a post's facts came from, not only Wikipedia ("Sources: Wikipedia, “Bhilai”; Question of Cities; Britannica"), so readers check the right place. No links are added.
 - Statistics keep their scope: the writer must give the area and year the brief gives for a figure, and the fact check rejects claims that widen it ("whole", "all", a figure for one area presented as another).
 - A `channel_binding=require` setting in the cost database URL (Neon adds it) is ignored instead of being sent to the server, which would have refused the connection.

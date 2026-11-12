@@ -18,6 +18,7 @@ pgserver = pytest.importorskip("pgserver")
 from db.client import _init_connection
 from pipeline import costs
 from pipeline.assessor import Assessment
+from pipeline.attribution import OutletNames
 from pipeline.content_generator import FactCheck, Posts
 from pipeline.facts_card import KeyFact, KeyFacts
 from pipeline.researcher import ResearchSummary
@@ -64,7 +65,7 @@ class FakeWorld:
         self._in_flight = 0
         self.max_in_flight = 0
 
-    async def parse(self, *, system, user, output_format, effort="medium"):
+    async def parse(self, *, system, user, output_format, effort="medium", model=None):
         place = user.split("\n", 1)[0].removeprefix("Place: ")
         if output_format is ResearchSummary:
             self.researched.append(place)
@@ -87,6 +88,8 @@ class FakeWorld:
             )
         if output_format is FactCheck:
             return FactCheck(unsupported=[])
+        if output_format is OutletNames:
+            return OutletNames(names=["Example News"])
         if output_format is KeyFacts:
             self.facts_asked += 1
             return KeyFacts(facts=[KeyFact(figure=n, caption=f"things {n}") for n in self.figures])
@@ -156,7 +159,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert preview.startswith("# Alpha Island — thread of 3\n")
         assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
         assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
-        assert "**4/4**" in preview and "> Sources: Wikipedia, “Alpha Island”; Example" in preview
+        assert "**4/4**" in preview and "> Sources: Wikipedia, “Alpha Island”; Example News" in preview
         assert "> A new remote, harsh or strange place every day. Follow for more." in preview
         assert "**Image on the first post:** Map showing Alpha Island." in preview
         assert "- **Independently backed:** yes. backed by [W][1]" in preview
@@ -201,7 +204,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
     # The closing reply carries the source link
     # The real run reuses the previewed text, including the outlets named in the closing reply
     assert world.posted[-1]["replies"][-1] == (
-        "Sources: Wikipedia, “Alpha Island”; Example\n\n"
+        "Sources: Wikipedia, “Alpha Island”; Example News\n\n"
         "A new remote, harsh or strange place every day. Follow for more."
     )
     # The first post carries the map card, labelled with the story type and region

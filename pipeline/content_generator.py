@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 
 from pipeline import facts_card, llm
-from pipeline.attribution import outlets_used
+from pipeline.attribution import name_outlets
 from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
 # Given more room the writer fills it: with a cap of five, every thread came back as five.
@@ -198,7 +198,7 @@ async def run_content_generation(db_pool, candidate_id: int) -> dict:
     return {
         "post_text": draft.posts[0],
         "thread_parts": draft.posts[1:] or None,
-        "sources": outlets_used(draft.sources, row["web_sources"] or []),
+        "sources": await name_outlets(draft.sources, row["web_sources"] or []),
         "facts": await _card_facts(row["place_name"], row["raw_research"]),
     }
 

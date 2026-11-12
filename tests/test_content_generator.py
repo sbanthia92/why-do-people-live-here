@@ -119,8 +119,10 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
 
     facts = [{"figure": "96", "caption": "villages"}] * 3
     select = AsyncMock(side_effect=[None, facts])
+    name = AsyncMock(side_effect=[[], ["Example News", "Britannica"]])
     with (
         patch("pipeline.content_generator.write", new=generate),
+        patch("pipeline.content_generator.name_outlets", new=name),
         patch("pipeline.facts_card.select_facts", new=select),
     ):
         assert await run_content_generation(pool, 1) == {
@@ -132,10 +134,11 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
         assert await run_content_generation(pool, 1) == {
             "post_text": "Hook.",
             "thread_parts": ["2/ More.", "3/ End."],
-            "sources": ["Example", "Britannica"],
+            "sources": ["Example News", "Britannica"],
             "facts": facts,
         }
     assert select.call_args.args == ("Testville", "Brief [W].")
+    assert name.call_args.args[0] == [2, 1, 9]  # the numbers the writer said it used
     assert generate.call_args.args == ("Testville", "Brief [W].", "Lead with the ferry.")
 
 

@@ -9,6 +9,7 @@ through must find it supported. A place with fewer than three facts left gets no
 import io
 import os
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -82,14 +83,22 @@ Rules:
 - Skip any figure the brief marks as disputed, or for which it gives conflicting values.
 - Keep the brief's qualifiers ("up to", "about", "one source says") and say what area and year \
 a figure covers when the brief gives them.
+- Skip predictions, forecasts, plans and deadlines whose date has passed or is about to: "to be \
+flooded by 2025" is not a fact once 2025 is over. Prefer what is true now, or settled history.
 - Each fact must make sense on its own, without the others.
 - If the brief has fewer good figures, return fewer. Never pad."""
 
 
 def _digits_in_brief(figure: str, brief: str) -> bool:
-    """Every number in the figure appears in the brief exactly as written."""
+    """Every number in the figure appears in the brief as a whole number, exactly as written.
+
+    "80" is not found inside "280" or "1980s". A figure the brief spells out in words
+    ("eighty percent") is not found either, and is dropped: the safe side.
+    """
     numbers = _NUMBER.findall(figure)
-    return bool(numbers) and all(number in brief for number in numbers)
+    return bool(numbers) and all(
+        re.search(rf"(?<![\d.,]){re.escape(number)}(?!\d|[.,]\d)", brief) for number in numbers
+    )
 
 
 async def select_facts(place_name: str, raw_research: str) -> list[dict] | None:
@@ -99,7 +108,10 @@ async def select_facts(place_name: str, raw_research: str) -> list[dict] | None:
 
     picked = await llm.parse(
         system=_SYSTEM,
-        user=f"Place: {place_name}\n\n<research_brief>\n{raw_research}\n</research_brief>",
+        user=(
+            f"Today's date: {datetime.now(UTC):%-d %B %Y}\nPlace: {place_name}\n\n"
+            f"<research_brief>\n{raw_research}\n</research_brief>"
+        ),
         output_format=KeyFacts,
     )
     facts = [

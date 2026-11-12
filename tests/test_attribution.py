@@ -92,3 +92,14 @@ async def test_no_sources_used_means_no_model_call():
     names, parse = await _named(OutletNames(names=[]), numbers=())
     assert names == []
     parse.assert_not_called()
+
+
+def test_personal_pages_on_an_internet_provider_or_under_a_tilde_are_not_named():
+    sources = [
+        _source("https://www.zianet.com/tedmorris/dg/history.html", "Official Histories"),
+        _source("https://people.example.edu/~smith/atoll.html", "Notes on the atoll"),
+        _source("https://military-history.fandom.com/wiki/Diego_Garcia", "Diego Garcia"),
+        _source("https://www.navyweek.org/bases/diego", "Naval Support Facility"),
+    ]
+
+    assert [s["url"] for s in sites_used([1, 2, 3, 4], sources)] == ["https://www.navyweek.org/bases/diego"]

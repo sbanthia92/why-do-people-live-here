@@ -41,6 +41,9 @@ _MAX_FIGURE_CHARS = 12
 _MAX_CAPTION_CHARS = 70
 _ACCENTS = (YELLOW, ORANGE, RED, YELLOW)
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+# A card of dates reads like a timeline: one year at most, the rest counts, prices, distances
+MAX_YEAR_FACTS = 1
+_BARE_YEAR = re.compile(r"(1\d{3}|20\d{2})")
 
 
 def enabled() -> bool:
@@ -64,6 +67,10 @@ class KeyFact(BaseModel):
             f" {_MAX_CAPTION_CHARS} characters, no full stop."
         )
     )
+    is_year: bool = Field(
+        default=False,
+        description="True when the figure is a calendar year or a date, not a quantity.",
+    )
 
 
 class KeyFacts(BaseModel):
@@ -85,8 +92,16 @@ Rules:
 a figure covers when the brief gives them.
 - Skip predictions, forecasts, plans and deadlines whose date has passed or is about to: "to be \
 flooded by 2025" is not a fact once 2025 is over. Prefer what is true now, or settled history.
+- At most {MAX_YEAR_FACTS} fact may be a year or a date. Prefer quantities: counts, prices, \
+distances, temperatures, populations.
 - Each fact must make sense on its own, without the others.
 - If the brief has fewer good figures, return fewer. Never pad."""
+
+
+def _is_year(fact: KeyFact) -> bool:
+    """The model's own flag, or a bare year whose caption says so ("1971", "year the ...")."""
+    bare = _BARE_YEAR.fullmatch(fact.figure.strip()) is not None
+    return fact.is_year or (bare and fact.caption.strip().lower().startswith("year"))
 
 
 def _digits_in_brief(figure: str, brief: str) -> bool:
@@ -114,13 +129,20 @@ async def select_facts(place_name: str, raw_research: str) -> list[dict] | None:
         ),
         output_format=KeyFacts,
     )
-    facts = [
-        {"figure": f.figure.strip(), "caption": f.caption.strip().rstrip(".")}
-        for f in picked.facts
-        if len(f.figure.strip()) <= _MAX_FIGURE_CHARS
-        and len(f.caption.strip()) <= _MAX_CAPTION_CHARS
-        and _digits_in_brief(f.figure, raw_research)
-    ]
+    facts, years = [], 0
+    for f in picked.facts:
+        if (
+            len(f.figure.strip()) > _MAX_FIGURE_CHARS
+            or len(f.caption.strip()) > _MAX_CAPTION_CHARS
+            or not _digits_in_brief(f.figure, raw_research)
+        ):
+            continue
+        if _is_year(f):
+            # The first year the model listed is the one it found most striking
+            years += 1
+            if years > MAX_YEAR_FACTS:
+                continue
+        facts.append({"figure": f.figure.strip(), "caption": f.caption.strip().rstrip(".")})
     if len(facts) < MIN_FACTS:
         return None
     # The same check the posts go through: each fact is read as a one-line post
@@ -157,6 +179,12 @@ def render_facts_card(place_name: str, context: str, facts: list[dict]) -> bytes
     rows = len(facts) // columns
     tile_w = (right - left - gap * (columns - 1)) // columns
     tile_h = (bottom - top - gap * (rows - 1)) // rows
+    # One caption size for the whole card: the smaller one if any caption needs it
+    caption_width = tile_w - 96 if columns == 2 else tile_w - 520 - 96
+    size = 34
+    if any(len(_wrap(draw, f["caption"], _font(size), caption_width)) > 2 for f in facts):
+        size = 28
+    line_height = int(size * 1.3)
     for i, fact in enumerate(facts):
         x = left + (i % columns) * (tile_w + gap)
         y = top + (i // columns) * (tile_h + gap)
@@ -168,20 +196,14 @@ def render_facts_card(place_name: str, context: str, facts: list[dict]) -> bytes
             # The figure above its caption
             figure = _fit(draw, fact["figure"], tile_w - 96, 88)
             draw.text((inner, y + 40), fact["figure"], font=figure, fill=accent, anchor="lt")
-            caption_left, caption_top, caption_width = inner, y + 150, tile_w - 96
+            caption_left, caption_top = inner, y + 150
         else:
             # The figure on the left, its caption beside it
             figure_width = 520
             figure = _fit(draw, fact["figure"], figure_width - 40, 84)
             draw.text((inner, y + tile_h / 2), fact["figure"], font=figure, fill=accent, anchor="lm")
-            caption_left, caption_width = inner + figure_width, tile_w - figure_width - 96
-            caption_top = None
-        size = 34
-        lines = _wrap(draw, fact["caption"], _font(size), caption_width)
-        if len(lines) > 2:
-            size = 28
-            lines = _wrap(draw, fact["caption"], _font(size), caption_width)[:3]
-        line_height = int(size * 1.3)
+            caption_left, caption_top = inner + figure_width, None
+        lines = _wrap(draw, fact["caption"], _font(size), caption_width)[:3]
         if caption_top is None:
             caption_top = y + tile_h / 2 - line_height * len(lines) / 2
         for n, line in enumerate(lines):

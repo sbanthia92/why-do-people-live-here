@@ -28,12 +28,21 @@ _GENERIC = {"co", "com", "org", "gov", "ac", "net", "edu", "mil"}
 _HOSTS = {
     "weebly", "wordpress", "blogspot", "wixsite", "wix", "medium", "substack", "tumblr",
     "github", "google", "facebook", "youtube", "reddit", "twitter", "x", "pinterest",
+    "blogger", "typepad", "livejournal", "neocities", "geocities", "angelfire", "tripod",
+    "fandom", "zianet", "earthlink", "comcast", "aol",
     "wikipedia", "wikimedia", "wikidata",
 }  # fmt: skip
 
 
 def _squash(text: str) -> str:
     return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _is_hosted_page(source: dict) -> bool:
+    """A personal page on someone else's site: its host is in _HOSTS, or its path is "/~name"."""
+    site = _site(source)
+    path = urlparse(source.get("url", "")).path
+    return site is None or site[1] in _HOSTS or path.startswith("/~")
 
 
 def _site(source: dict) -> tuple[str, str] | None:
@@ -80,9 +89,9 @@ def sites_used(numbers: list[int], web_sources: list[dict]) -> list[dict]:
         if not 1 <= number <= len(web_sources):
             continue
         source = web_sources[number - 1]
-        site = _site(source)
-        if site is None or site[1] in _HOSTS:
+        if _is_hosted_page(source):
             continue
+        site = _site(source)
         counts[site[0]] += 1
         first.setdefault(site[0], source)
     return [first[host] for host, _ in counts.most_common(MAX_OUTLETS)]

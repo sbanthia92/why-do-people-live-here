@@ -37,6 +37,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- Key-facts card: at most one of its figures is a year, so the card leans on counts, prices and distances; and all captions on a card are drawn at one size.
+- The closing reply no longer names internet providers and wiki hosts that carry other people's pages (Zianet, Fandom, Geocities, addresses with `/~name`), as it already skipped Weebly and WordPress.
 - Photos (`POST_IMAGES=true`) are limited to Wikimedia Commons files that are CC0 or public domain, need no attribution and carry no rights warning; CC BY and CC BY-SA are no longer used. The photo credit no longer contains links, so the closing reply is not charged at X's link rate.
 - The `exclave` story type is now `border_oddity`: its list also holds divided towns and leased territories, and the label is printed on the map card. Existing state is renamed when the schema is applied.
 - The daily workflow is scheduled for 09:17 UTC again, to land at about 14:30 UTC: GitHub starts it roughly five hours late whatever the minute.

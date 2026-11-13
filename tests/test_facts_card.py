@@ -4,7 +4,7 @@ import io
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from pipeline import facts_card
 from pipeline.content_generator import UnsupportedClaim
@@ -138,3 +138,46 @@ async def test_a_figure_only_found_inside_a_longer_number_is_dropped():
     # The picker is told today's date, so it can skip predictions that have passed
     assert parse.call_args.kwargs["user"].startswith("Today's date: ")
     assert "date has passed" in parse.call_args.kwargs["system"]
+
+
+async def test_only_the_first_year_fact_is_kept():
+    brief = BRIEF + " The plant was approved in 1955 [W] and expanded in 1967 [W]."
+    picked = KeyFacts(
+        facts=[
+            KeyFact(figure="1959", caption="year the first blast furnace was lit"),
+            KeyFact(figure="96", caption="villages gave up land"),
+            KeyFact(figure="1955", caption="year the plant was approved"),
+            KeyFact(figure="1967", caption="the plant was expanded", is_year=True),
+            KeyFact(figure="27,458", caption="vacant houses in Bhilai Nagar (2011 census)"),
+            KeyFact(figure="$12.69", caption="a gallon of milk"),
+        ]
+    )
+    with (
+        patch("pipeline.llm.parse", new=AsyncMock(return_value=picked)),
+        patch("pipeline.content_generator.check_facts", new=AsyncMock(return_value=[])),
+    ):
+        facts = await select_facts("Bhilai", brief)
+
+    assert [f["figure"] for f in facts] == ["1959", "96", "27,458", "$12.69"]
+
+
+def test_every_caption_on_a_card_is_drawn_at_one_size():
+    facts = [
+        {"figure": "298", "caption": "coconut crabs per hectare in the Ramsar area (2010), a record density"},
+        {"figure": "1971", "caption": "year the islanders were removed"},
+        {"figure": "690", "caption": "nautical miles from Malé"},
+        {"figure": "1,200", "caption": "contract workers in 2024"},
+    ]
+    sizes = set()
+    real = ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, font=None, fill=None, **kwargs):
+        if fill == facts_card.CREAM and text != "DIEGO GARCIA":
+            sizes.add(font.size)
+        return real(self, xy, text, font=font, fill=fill, **kwargs)
+
+    with patch.object(ImageDraw.ImageDraw, "text", new=spy):
+        facts_card.render_facts_card("Diego Garcia", "", facts)
+
+    # The first caption needs three lines, so all four are drawn at the smaller size
+    assert sizes == {28}

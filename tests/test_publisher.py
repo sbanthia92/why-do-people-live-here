@@ -112,7 +112,7 @@ _CANDIDATE = {
 _CARD = {"path": "/tmp/testville.png", "alt_text": "Map showing Testville."}
 
 
-async def _publish(monkeypatch, *, env: dict, card, photo=None) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+async def _publish(monkeypatch, *, env: dict, card, photos=()) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
     """Run run_publish in a dry run with the given settings; returns the mocks it used."""
     from pipeline.publisher import run_publish
 
@@ -122,11 +122,11 @@ async def _publish(monkeypatch, *, env: dict, card, photo=None) -> tuple[AsyncMo
         monkeypatch.setenv(key, value)
     pool = AsyncMock()
     pool.fetchrow.return_value = _CANDIDATE
-    draw, lookup, post = AsyncMock(return_value=card), AsyncMock(return_value=photo), AsyncMock(return_value=None)
+    draw, lookup, post = AsyncMock(return_value=card), AsyncMock(return_value=list(photos)), AsyncMock(return_value=None)
 
     with (
         patch("pipeline.publisher.map_card_for_candidate", new=draw),
-        patch("pipeline.publisher.get_image_for_candidate", new=lookup),
+        patch("pipeline.publisher.photos_for_candidate", new=lookup),
         patch("pipeline.publisher.post_to_x", new=post),
     ):
         await run_publish(pool, 1, {"post_text": "Hook.", "thread_parts": None}, dry_run=True)
@@ -137,36 +137,56 @@ async def test_map_card_goes_on_the_first_post_by_default(monkeypatch):
     draw, lookup, post = await _publish(monkeypatch, env={}, card=_CARD)
 
     assert draw.await_args.args[:3] == ("Testville", _URL, "ghost town · Asia")
-    lookup.assert_not_awaited()  # no photo lookup: photos stay off
+    lookup.assert_awaited_once()  # photos are looked for, and this place has none
     assert post.await_args.args[2] == "/tmp/testville.png"
+    assert post.await_args.kwargs["extra_images"] == []
     assert post.await_args.kwargs["alt_text"] == "Map showing Testville."
 
 
-async def test_no_image_when_maps_are_off_or_the_place_has_no_coordinates(monkeypatch):
-    draw, lookup, post = await _publish(monkeypatch, env={"MAP_CARDS": "false"}, card=_CARD)
+async def test_no_image_when_maps_and_photos_are_off_or_the_place_has_neither(monkeypatch):
+    off = {"MAP_CARDS": "false", "POST_IMAGES": "false"}
+    draw, lookup, post = await _publish(monkeypatch, env=off, card=_CARD, photos=_PHOTOS)
     draw.assert_not_awaited()
     lookup.assert_not_awaited()
     assert post.await_args.args[2] is None
 
-    # Coordinates missing: the card can't be drawn, and the post goes out without one
-    _, lookup, post = await _publish(monkeypatch, env={}, card=None)
-    lookup.assert_not_awaited()
+    # Coordinates missing and no usable photo: the post goes out without an image
+    _, _, post = await _publish(monkeypatch, env={}, card=None)
     assert post.await_args.args[2] is None
 
 
-async def test_photo_is_only_a_fallback_and_only_when_enabled(monkeypatch):
-    photo = {"url": "https://upload.example/p.jpg", "credit": "Jo", "license": "CC0"}
-    _, lookup, post = await _publish(
-        monkeypatch, env={"POST_IMAGES": "true"}, card=None, photo=photo
-    )
-    lookup.assert_awaited_once()
-    assert post.await_args.args[2] == "https://upload.example/p.jpg"
+_PHOTOS = [
+    {"path": f"/tmp/testville-photo-{i}.jpg", "alt_text": f"Photo {i}", "license": "CC0",
+     "page_url": f"https://commons.example/File:{i}.jpg"}
+    for i in (1, 2)
+]  # fmt: skip
 
-    _, lookup, post = await _publish(
-        monkeypatch, env={"POST_IMAGES": "true"}, card=_CARD, photo=photo
-    )
-    lookup.assert_not_awaited()  # the map card wins
+
+async def test_photos_are_added_after_the_map_and_never_replace_it(monkeypatch):
+    _, _, post = await _publish(monkeypatch, env={}, card=_CARD, photos=_PHOTOS)
+
     assert post.await_args.args[2] == "/tmp/testville.png"
+    assert [e["path"] for e in post.await_args.kwargs["extra_images"]] == [
+        "/tmp/testville-photo-1.jpg",
+        "/tmp/testville-photo-2.jpg",
+    ]
+    # The closing reply carries no photo credit: none is required, and it has no room
+    assert "Photo:" not in post.await_args.args[1][-1]
+
+
+async def test_without_a_map_the_first_photo_is_the_posts_image(monkeypatch):
+    _, _, post = await _publish(monkeypatch, env={}, card=None, photos=_PHOTOS)
+
+    assert post.await_args.args[2] == "/tmp/testville-photo-1.jpg"
+    assert post.await_args.kwargs["alt_text"] == "Photo 1"
+    assert [e["path"] for e in post.await_args.kwargs["extra_images"]] == ["/tmp/testville-photo-2.jpg"]
+
+
+async def test_photos_can_be_switched_off(monkeypatch):
+    _, lookup, post = await _publish(monkeypatch, env={"POST_IMAGES": "false"}, card=_CARD, photos=_PHOTOS)
+
+    lookup.assert_not_awaited()
+    assert post.await_args.kwargs["extra_images"] == []
 
 
 def test_footer_names_the_source_without_a_link_by_default(monkeypatch):

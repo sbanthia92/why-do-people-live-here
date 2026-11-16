@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Added
+- Photos on posts: after the map and facts cards, the first post carries up to two photos of the place when it has any that Wikimedia Commons labels CC0 or public domain, and that pass the size, name and AI checks. A photo with a recognisable person in it is never used. On by default; `POST_IMAGES=false` turns it off. Each file's Commons page is listed in the post's issue.
 - Key-facts card: the first post now carries a second image next to the map with the place's three or four most striking figures, each checked against the research brief. On by default; `FACTS_CARD=false` turns it off.
 - New colours for the map card, the facts card, the profile picture and the banner: black and greys with yellow, orange and red accents, and the banner's lettering is centred. The files in `assets/` are redrawn; upload them to X to change the profile.
 - Weekly cost report by email: every Friday a workflow reads the private cost database and emails the last 7 days (spend, cost per post, spend by stage, a link to each post, spend on places not posted) over SMTP, e.g. via Resend. The report is never printed in the log or filed as an issue.
@@ -37,6 +38,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- `POST_IMAGES` now defaults to on and adds photos next to the cards; it used to be off and only replaced a missing map card with the article's lead image. The closing reply no longer carries a photo credit.
 - Threads are shorter: a hook and one reply, then the sources reply, three posts in all (was up to four plus the sources reply). The reply is no longer numbered.
 - Map card: the map reaches at least 2,500 km (was 1,200) so the surrounding continent and its large cities are in view, is drawn in light blue and green, marks the place in red, and no longer prints city names on top of each other.
 - Key-facts card: at most one of its figures is a year, so the card leans on counts, prices and distances; and all captions on a card are drawn at one size.

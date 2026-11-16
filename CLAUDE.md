@@ -30,7 +30,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - `pipeline/xtext.py` — X's character counting.
 - `pipeline/map_card.py` + `pipeline/data/natural_earth.json.gz` — locator card image.
 - `pipeline/facts_card.py` — key-facts card next to the map: figures picked from the brief, digits matched in code, then the posts' fact check; drawn with the map card's palette; saved in `posts.facts`.
-- `pipeline/image_sourcer.py` — optional Commons photo (off by default). `pipeline/photo_filter.py` (size and shape, not-a-photo names, Haiku check that a photo shows the place; `--compare` runs Sonnet alongside), `scripts/check_images.py` + `.github/workflows/image-check.yml` — read-only report of the photos that pass every check for recent posts.
+- `pipeline/photos.py` — up to two photos added to the first post after the cards: searches the article and the exact Commons category, applies the licence rules in `pipeline/image_sourcer.py` and the checks in `pipeline/photo_filter.py` (size and shape, not-a-photo names, Haiku check that a photo shows the place and no recognisable person; `--compare` runs Sonnet alongside), `scripts/check_images.py` + `.github/workflows/image-check.yml` — read-only report of the photos that pass every check for recent posts.
 - `pipeline/publisher.py` — X v2 API via tweepy.
 - `pipeline/preview.py` — preview / posted issue bodies.
 - `pipeline/llm.py` — model names, token/cost accounting.
@@ -63,7 +63,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 ### Images and licensing
 - **Map cards on by default** (`MAP_CARDS`), drawn from public-domain Natural Earth data: no licence risk, has alt text, skipped when Wikipedia has no coordinates. The nearest major city is always labelled (PR #21). The map reaches at least 2,500 km and is drawn light (blue water, green land): a closer view of an island showed only an unrecognisable strip of coast.
 - **Key-facts card on by default** (`FACTS_CARD`): three or four figures from the brief, each passing a length check, an exact-digits-in-brief check and the fact check; fewer than three → no card. A wrong figure on an image can't be edited, so don't loosen these checks.
-- **Photos off by default** (`POST_IMAGES`) and only a fallback when there is no card. Since PR #31, only Wikimedia Commons files that are CC0 or public domain, `AttributionRequired: false`, no `Restrictions`, JPEG/PNG, not non-free. **CC BY / CC BY-SA are refused**: posting to X grants X a sublicensable licence a CC licence can't pass on, and attribution slips under older CC versions terminate the licence. Remaining risk: mislabelled Commons files.
+- **Photos on by default as an add-on** (`POST_IMAGES`), after the map and facts cards, never instead of them; many places have none that pass. **No photo with a recognisable person**: the account posts places, not people, and there is no exception for portraits of a community. Since PR #31, only Wikimedia Commons files that are CC0 or public domain, `AttributionRequired: false`, no `Restrictions`, JPEG/PNG, not non-free. **CC BY / CC BY-SA are refused**: posting to X grants X a sublicensable licence a CC licence can't pass on, and attribution slips under older CC versions terminate the licence. Remaining risk: mislabelled Commons files.
 - **Profile art** is drawn from the same Natural Earth data, so nothing to license.
 
 ### Variety

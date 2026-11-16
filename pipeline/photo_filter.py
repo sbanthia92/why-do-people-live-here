@@ -56,17 +56,22 @@ class PhotoVerdict(BaseModel):
     place_match: Literal["yes", "no", "unsure"] = Field(
         description="Whether it shows this place: yes only if the evidence says so."
     )
+    recognisable_person: bool = Field(
+        description="True if anyone in the picture could be recognised by someone who knows "
+        "them: a face shown clearly, a portrait, a posed group. False for an empty scene, or "
+        "for people who are small, distant, turned away or part of a crowd."
+    )
     what_it_shows: str = Field(description="A few words on what is in the picture.")
 
     @property
     def accepted(self) -> bool:
-        return self.is_photo and self.place_match == "yes"
+        return self.is_photo and self.place_match == "yes" and not self.recognisable_person
 
 
 _SYSTEM = """\
 You check photos for an account that explains why people live in remote places. For one \
 photo you get the place it must show, the file's name and description, and where the file came \
-from. Decide two things.
+from. Decide three things.
 
 1. is_photo: is it a real photograph? Maps, flags, coats of arms, icons, charts, diagrams, \
 logos, screenshots and drawings are not.
@@ -75,7 +80,10 @@ picture itself says so. Answer no when the evidence names a different place, inc
 similar name (a town in another country), or when the photo is a generic illustration of a type of \
 place. Answer unsure when nothing says where it is. A file from the place's own category on \
 Wikimedia Commons is good evidence; a picture that merely appears in the place's Wikipedia \
-article is weaker, because articles sometimes illustrate a place with a photo of another one."""
+article is weaker, because articles sometimes illustrate a place with a photo of another one.
+3. recognisable_person: could anyone in it be recognised? The account posts places, not people, \
+and the people in a photo did not ask to be posted. Answer true for any clearly shown face, \
+whoever it is and however old the photo. Distant figures and crowds are fine."""
 
 _SOURCES = {
     "category": "the place's own Wikimedia Commons category",

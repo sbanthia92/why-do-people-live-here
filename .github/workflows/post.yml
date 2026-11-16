@@ -38,6 +38,9 @@ jobs:
       SOURCE_LINK: ${{ vars.SOURCE_LINK }}
       # Set the FACTS_CARD repository variable to "false" to stop attaching the key-facts card.
       FACTS_CARD: ${{ vars.FACTS_CARD }}
+      # Set the POST_IMAGES repository variable to "false" to stop attaching photos. Only
+      # public-domain and CC0 photos from Wikimedia Commons are ever used.
+      POST_IMAGES: ${{ vars.POST_IMAGES }}
       POSTS: ${{ inputs.posts || 1 }}
       PREVIEW_DIR: previews
       STATE_DIR: state
@@ -134,13 +137,15 @@ jobs:
               commit --quiet -m "State after run ${GITHUB_RUN_ID}"
           git push origin HEAD:data
 
-      # The map cards drawn for this run, so a preview's image can be looked at
+      # The cards drawn and the photos used for this run, so they can be looked at
       - name: Keep map cards
         if: always() && steps.mode.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: map-cards
-          path: previews/*.png
+          path: |
+            previews/*.png
+            previews/*.jpg
           if-no-files-found: ignore
           retention-days: 14
 

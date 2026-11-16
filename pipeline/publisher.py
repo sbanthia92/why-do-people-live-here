@@ -17,21 +17,16 @@ from pipeline.attribution import MAX_OUTLETS
 from pipeline.candidate_selector import _HEADERS
 from pipeline.facts_card import enabled as _facts_card_enabled
 from pipeline.facts_card import facts_card_for_candidate
-from pipeline.image_sourcer import get_image_for_candidate
 from pipeline.map_card import map_card_for_candidate
+from pipeline.photos import enabled as _images_enabled
+from pipeline.photos import photos_for_candidate
 from pipeline.preview import write_preview
 from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
 console = Console()
 
-
-def _images_enabled() -> bool:
-    """Photos are off unless POST_IMAGES=true.
-
-    Only CC0 and public-domain photos are used (see image_sourcer), but a mislabelled
-    file is still possible, so photos stay opt-in (see README).
-    """
-    return os.getenv("POST_IMAGES", "false").strip().lower() in {"1", "true", "yes"}
+# The most images X allows on one post
+MAX_IMAGES = 4
 
 
 def _source_link_enabled() -> bool:
@@ -103,7 +98,7 @@ async def post_to_x(
     images = [(image_url, alt_text)] if image_url else []
     images += [(e["path"], e["alt_text"]) for e in extra_images or []]
     # An image that fails to upload is left off; the post still goes out
-    media_ids = [m for m in [await upload_image(src, alt) for src, alt in images[:4]] if m]
+    media_ids = [m for m in [await upload_image(src, alt) for src, alt in images[:MAX_IMAGES]] if m]
     client = _x_client()
     first_id: str | None = None
     reply_to: str | None = None
@@ -239,27 +234,28 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
     )
     name, url = candidate["place_name"], candidate["wikipedia_url"]
 
-    # On the first post: the map card we draw (or failing that a licensed photo), and next to
-    # it the key-facts card when the place has enough checked facts
-    card = photo = facts = None
+    # On the first post: the map card we draw, the key-facts card when the place has enough
+    # checked facts, and then photos of the place when there are any free of conditions
+    card = facts = None
+    photos: list[dict] = []
     context = " · ".join(
         filter(None, [(candidate["story_category"] or "").replace("_", " "), candidate["region"]])
     )
     directory = Path(os.getenv("PREVIEW_DIR") or tempfile.gettempdir())
     if _map_cards_enabled():
         card = await map_card_for_candidate(name, url, context, directory)
-    if card is None and _images_enabled():
-        photo = await get_image_for_candidate(name, url)
     if _facts_card_enabled():
         facts = facts_card_for_candidate(name, context, content.get("facts"), directory)
-    image_source = card["path"] if card else photo["url"] if photo else None
-    alt_text = card["alt_text"] if card else None
-    extra = [facts] if facts else []
-    if image_source is None and extra:
-        # No map or photo: the facts card is the post's image
-        image_source, alt_text, extra = facts["path"], facts["alt_text"], []
+    if _images_enabled():
+        photos = await photos_for_candidate(name, url, directory)
+    # X shows at most four images: the cards first, photos in what room is left
+    images = [i for i in (card, facts) if i] + photos
+    image_source = images[0]["path"] if images else None
+    alt_text = images[0]["alt_text"] if images else None
+    extra = images[1:MAX_IMAGES]
+    photos = [p for p in photos if p in images[:MAX_IMAGES]]
 
-    replies = [*(content["thread_parts"] or []), _footer(url, photo, content.get("sources"))]
+    replies = [*(content["thread_parts"] or []), _footer(url, None, content.get("sources"))]
 
     x_post_id = await post_to_x(
         content["post_text"],
@@ -286,7 +282,17 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             [content["post_text"], *replies],
             preview_dir,
             x_post_id=x_post_id,
-            image_note=" ".join(filter(None, [alt_text, *(e["alt_text"] for e in extra)])) or None,
+            image_note=" ".join(
+                filter(
+                    None,
+                    [
+                        alt_text,
+                        *(e["alt_text"] for e in extra),
+                        *(f"({p['license']}: {p['page_url']})" for p in photos),
+                    ],
+                )
+            )
+            or None,
         )
         console.log(f"[publisher] {'Preview' if dry_run else 'Record'} written to {file}")
 
@@ -300,13 +306,9 @@ async def run_publish(db_pool, candidate_id: int, content: dict, dry_run: bool =
             "sources": content.get("sources"),
             # Kept so that a previewed post is published with the same facts card
             "facts": content.get("facts"),
-            "image_url": Path(card["path"]).name if card else photo["url"] if photo else None,
-            # The Commons page records which file was used and the licence it had then
-            "image_credit": " ".join(
-                filter(None, [photo.get("credit"), f"({photo['license']})", photo.get("page_url")])
-            )
-            if photo
-            else None,
+            "image_url": Path(image_source).name if image_source else None,
+            # The Commons pages record which files were used and the licence they had then
+            "image_credit": " ".join(f"({p['license']}) {p['page_url']}" for p in photos) or None,
             "x_post_id": x_post_id,
             "dry_run": dry_run,
         },

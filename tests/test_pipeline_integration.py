@@ -96,7 +96,7 @@ class FakeWorld:
         assert output_format is Posts
         self.written.append(place)
         return Posts(
-            posts=[f"Why do people live in {place}?", "2/ Origin.", "3/ Economy."], sources=[1]
+            posts=[f"Why do people live in {place}?", "Origin and economy."], sources=[1]
         )
 
     async def post_to_x(
@@ -156,10 +156,10 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         assert await run_once() == 1
 
         preview = (tmp_path / "0001-alpha-island.md").read_text()
-        assert preview.startswith("# Alpha Island — thread of 3\n")
+        assert preview.startswith("# Alpha Island — thread of 2\n")
         assert "island community · Oceania · [Wikipedia](https://en.wikipedia.org/wiki/Alpha_Island)" in preview
-        assert "**1/4** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
-        assert "**4/4**" in preview and "> Sources: Wikipedia, “Alpha Island”; Example News" in preview
+        assert "**1/3** · 35 characters\n\n> Why do people live in Alpha Island?" in preview
+        assert "**3/3**" in preview and "> Sources: Wikipedia, “Alpha Island”; Example News" in preview
         assert "> A new remote, harsh or strange place every day. Follow for more." in preview
         assert "**Image on the first post:** Map showing Alpha Island." in preview
         assert "- **Independently backed:** yes. backed by [W][1]" in preview
@@ -172,7 +172,7 @@ async def test_dry_run_previews_then_real_run_posts_same_candidate(db, monkeypat
         post = await db.fetchrow("SELECT * FROM posts")
         assert post["dry_run"] is True and post["x_post_id"] is None
         assert post["post_text"] == "Why do people live in Alpha Island?"
-        assert post["thread_parts"] == ["2/ Origin.", "3/ Economy."]  # JSONB round-trip
+        assert post["thread_parts"] == ["Origin and economy."]  # JSONB round-trip
         assert await _statuses(db) == {"Alpha Island": "approved"}
         assert await db.fetchval("SELECT count(*) FROM variety_log") == 0
         candidate = await db.fetchrow("SELECT region, layer1_passed FROM candidates")
@@ -403,9 +403,9 @@ async def test_costs_are_saved_per_place_with_x_posting_only_when_published(db, 
 
     x_rows = [r for r in await db.fetch(sql) if r["stage"] == "x posting"]
     assert [r["place_name"] for r in x_rows] == ["Alpha Island"]
-    # Three posts, then the closing reply naming the source, at $0.015 each
-    assert x_rows[0]["requests"] == 4
-    assert float(x_rows[0]["usd"]) == pytest.approx(0.06)
+    # Two posts, then the closing reply naming the source, at $0.015 each
+    assert x_rows[0]["requests"] == 3
+    assert float(x_rows[0]["usd"]) == pytest.approx(0.045)
 
 
 async def test_facts_card_goes_out_next_to_the_map_and_a_preview_is_reused(db, monkeypatch, tmp_path):

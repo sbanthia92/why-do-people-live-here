@@ -45,7 +45,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 ### Editorial quality
 - **Two yes/no gates replaced the 0–10 score** (PR #6). A place posts only if (1) the central answer is backed by a source independent of Wikipedia, and (2) there is a real "why would anyone live there?" story that the brief answers. The weighted score was a soft judgement with placeholder weights, and totals clustered at 9–10 even after a stricter rubric (PR #4).
 - **Wikipedia and its mirrors are blocked from web search** (Kiddle, Grokipedia, Wikiwand, ...). A mirror counted as "independent" would let Wikipedia corroborate itself and pass gate 1.
-- **The writer decides length; threads are capped at four posts.** With a cap of five, every thread came back as five.
+- **One post, or a hook and one reply; the sources reply makes three** (was a cap of four). With a cap of five, every thread came back as five, and few readers go past the second post.
 - **Fact check on every draft** (PR #19): each claim is compared with the brief; any unsupported number, name, date or quotation sends it back, up to twice. Still failing → place not posted. The writer works from the brief only.
 - **Hooks** open with the surprising fact and end on the question.
 
@@ -61,7 +61,7 @@ python scripts/x_authorize.py                    # get a token for a different X
 - **Closing reply** names the Wikipedia article plus the other outlets the writer used (at most three, most-used first, named by Haiku from each source's title and address in `pipeline/attribution.py` with an address-based fallback; no links; saved in `posts.sources`) and ends with a follow line ("A new remote, harsh or strange place every day. Follow for more.").
 
 ### Images and licensing
-- **Map cards on by default** (`MAP_CARDS`), drawn from public-domain Natural Earth data: no licence risk, has alt text, skipped when Wikipedia has no coordinates. The nearest major city is always labelled (PR #21).
+- **Map cards on by default** (`MAP_CARDS`), drawn from public-domain Natural Earth data: no licence risk, has alt text, skipped when Wikipedia has no coordinates. The nearest major city is always labelled (PR #21). The map reaches at least 2,500 km and is drawn light (blue water, green land): a closer view of an island showed only an unrecognisable strip of coast.
 - **Key-facts card on by default** (`FACTS_CARD`): three or four figures from the brief, each passing a length check, an exact-digits-in-brief check and the fact check; fewer than three → no card. A wrong figure on an image can't be edited, so don't loosen these checks.
 - **Photos off by default** (`POST_IMAGES`) and only a fallback when there is no card. Since PR #31, only Wikimedia Commons files that are CC0 or public domain, `AttributionRequired: false`, no `Restrictions`, JPEG/PNG, not non-free. **CC BY / CC BY-SA are refused**: posting to X grants X a sublicensable licence a CC licence can't pass on, and attribution slips under older CC versions terminate the licence. Remaining risk: mislabelled Commons files.
 - **Profile art** is drawn from the same Natural Earth data, so nothing to license.

@@ -1,6 +1,7 @@
 """Tests for pipeline.map_card: the locator card drawn for each post."""
 
 import io
+import itertools
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -10,8 +11,8 @@ from PIL import Image
 from pipeline import map_card
 from pipeline.map_card import (
     HEIGHT,
-    LAND,
-    SEA,
+    MAP_LAND,
+    MAP_WATER,
     WIDTH,
     distance_km,
     map_card_for_candidate,
@@ -43,11 +44,11 @@ def test_card_is_a_16_by_9_png_small_enough_for_x():
 @pytest.mark.parametrize(
     ("name", "lat", "lon", "at_the_place"),
     [
-        ("Vostok Station", -78.46, 106.84, LAND),  # deep inside Antarctica
-        ("Funafuti", -8.52, 179.2, SEA),  # mid-Pacific, with Africa exactly opposite
-        ("Point Nemo", -48.88, -123.39, SEA),  # as far from land as it gets
-        ("South Pole", -90.0, 0.0, LAND),
-        ("North Pole", 90.0, 0.0, SEA),
+        ("Vostok Station", -78.46, 106.84, MAP_LAND),  # deep inside Antarctica
+        ("Funafuti", -8.52, 179.2, MAP_WATER),  # mid-Pacific, with Africa exactly opposite
+        ("Point Nemo", -48.88, -123.39, MAP_WATER),  # as far from land as it gets
+        ("South Pole", -90.0, 0.0, MAP_LAND),
+        ("North Pole", 90.0, 0.0, MAP_WATER),
     ],
 )
 def test_land_and_sea_are_right_at_awkward_places(name, lat, lon, at_the_place):
@@ -109,4 +110,24 @@ def test_nearest_major_city_is_labelled_on_the_map(monkeypatch):
     render_map_card("Valka", 57.77, 26.0, "border oddity · Europe")  # Riga is 150 km away
 
     assert labels.count("Riga") == 2  # once on the map, once in the panel
-    assert {"Moscow", "Kyiv"} <= set(labels)  # the largest cities in view are still there
+    assert {"Moscow", "London"} <= set(labels)  # the largest cities in view are still there
+
+
+def test_the_map_reaches_far_enough_to_show_the_continent_and_names_do_not_collide():
+    """Robinson Crusoe Island once showed only a strip of Chile's coast."""
+    drawn = []
+    real = map_card.ImageDraw.ImageDraw.text
+
+    def spy(self, xy, text, **kwargs):
+        if kwargs.get("fill") == map_card.MAP_INK:
+            drawn.append((text, self.textbbox(xy, text, font=kwargs["font"], anchor=kwargs["anchor"])))
+        return real(self, xy, text, **kwargs)
+
+    with patch.object(map_card.ImageDraw.ImageDraw, "text", new=spy):
+        render_map_card("Robinson Crusoe Island", -33.64, -78.84)
+
+    names = [name for name, _ in drawn]
+    # The nearest city, and one on the far side of the continent, 1,900 km away
+    assert "Valparaíso" in names and "Buenos Aires" in names
+    for (_, a), (_, b) in itertools.combinations(drawn, 2):
+        assert a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1]

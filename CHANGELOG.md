@@ -37,6 +37,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Integration tests that run the whole pipeline against an embedded Postgres.
 
 ### Changed
+- Threads are shorter: a hook and one reply, then the sources reply, three posts in all (was up to four plus the sources reply). The reply is no longer numbered.
+- Map card: the map reaches at least 2,500 km (was 1,200) so the surrounding continent and its large cities are in view, is drawn in light blue and green, marks the place in red, and no longer prints city names on top of each other.
 - Key-facts card: at most one of its figures is a year, so the card leans on counts, prices and distances; and all captions on a card are drawn at one size.
 - The closing reply no longer names internet providers and wiki hosts that carry other people's pages (Zianet, Fandom, Geocities, addresses with `/~name`), as it already skipped Weebly and WordPress.
 - Photos (`POST_IMAGES=true`) are limited to Wikimedia Commons files that are CC0 or public domain, need no attribution and carry no rights warning; CC BY and CC BY-SA are no longer used. The photo credit no longer contains links, so the closing reply is not charged at X's link rate.

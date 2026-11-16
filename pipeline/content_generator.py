@@ -8,8 +8,10 @@ from pipeline import facts_card, llm
 from pipeline.attribution import name_outlets
 from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
-# Given more room the writer fills it: with a cap of five, every thread came back as five.
-MAX_POSTS = 4
+# The hook and one reply; the closing reply with the sources makes three. Given more room the
+# writer fills it (with a cap of five, every thread came back as five), and few readers go
+# past the second post.
+MAX_POSTS = 2
 # How many times a draft that fails the format or fact check is sent back to the writer
 MAX_REWRITES = 2
 
@@ -53,18 +55,18 @@ Length: you decide it from the material. Every post is at most {MAX_POST_LENGTH}
 - One post, when the whole answer fits: open with the fact that makes living there \
 seem unlikely, name the place and where it is, and say why people live there. No \
 numbering.
-- A thread, for a place with a real story: three posts, or {MAX_POSTS} at most. The \
-brief will hold far more good material than fits. Choosing what to leave out is the \
-job: keep the few facts a reader would repeat to someone else and drop the rest.
+- Two posts, for a place with a real story: the hook and one reply. Never more than \
+{MAX_POSTS}. The brief will hold far more good material than fits. Choosing what to leave \
+out is the job: keep the few facts a reader would repeat to someone else and drop the rest.
 
-In a thread, the first post is the hook, and most readers see only that one. Open with \
+With two posts, the first is the hook, and most readers see only that one. Open with \
 the fact that makes living there seem unlikely — not with coordinates, distances or a \
 census figure. Name the place and say where it is in a few words. End it with the \
 question itself: "Why do people live here?", or "Why did people live here?" for an \
-abandoned place. It has to make sense with nothing after it. The posts that follow \
-answer the question — how the place began, what keeps people there, the details that \
-make it real — one idea per post, each starting with its number and a slash, like \
-"2/". End on the strongest fact, not on a summary."""
+abandoned place. It has to make sense with nothing after it. The second post \
+answers the question in full: why the place began or what keeps people there, whichever is \
+the real answer, and the one or two details that make it real. No numbering. End on the \
+strongest fact, not on a summary."""
 
 
 class UnsupportedClaim(BaseModel):

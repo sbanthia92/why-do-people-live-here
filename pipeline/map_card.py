@@ -43,10 +43,19 @@ MUTED = (166, 168, 176)
 YELLOW = (255, 208, 40)
 RED = (238, 62, 50)
 
+# The map itself is drawn light, in the colours people know from online maps: pale blue
+# water, pale green land. The text panel beside it stays dark, like the facts card.
+MAP_WATER = (168, 212, 236)
+MAP_LAND = (207, 232, 196)
+MAP_RING = (92, 124, 150)
+MAP_INK = (34, 40, 48)
+MAP_HALO = (255, 255, 255)
+
 # A city this large counts as "major" for the nearest-city line
 _MAJOR_CITY_POPULATION = 300_000
-# The regional map shows at least this far in every direction...
-_MIN_RADIUS_KM = 1200
+# The regional map shows at least this far in every direction, so that a coastline comes
+# with enough of its continent and its large cities to be recognised...
+_MIN_RADIUS_KM = 2500
 # ...and never more than this, however far the nearest city is
 _MAX_RADIUS_KM = 4500
 _MAX_CITY_LABELS = 5
@@ -221,12 +230,12 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
         sample = ring[:: max(1, len(ring) // 40)]
         return min(distance_km(lat, lon, y, x) for x, y in sample) <= reach_km
 
-    draw.rectangle([0, 0, size, size], fill=SEA)
+    draw.rectangle([0, 0, size, size], fill=MAP_WATER)
     far_side = _far_side_landmass(data["land"], lat, lon)
     if far_side is not None and in_reach(far_side):
-        draw.rectangle([0, 0, size, size], fill=LAND)
-        draw.polygon([on_map(x, y) for x, y in far_side], fill=SEA)
-    for shapes, colour in ((data["land"], LAND), (data["lakes"], LAKE)):
+        draw.rectangle([0, 0, size, size], fill=MAP_LAND)
+        draw.polygon([on_map(x, y) for x, y in far_side], fill=MAP_WATER)
+    for shapes, colour in ((data["land"], MAP_LAND), (data["lakes"], MAP_WATER)):
         for ring in shapes:
             if ring is not far_side and in_reach(ring):
                 draw.polygon([on_map(x, y) for x, y in ring], fill=colour)
@@ -235,14 +244,24 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
     small = _font(22 * s)
     for km in range(step, int(radius_km * 1.5), step):
         r = km * px_per_km
-        draw.ellipse([centre - r, centre - r, centre + r, centre + r], outline=RING, width=2 * s)
+        draw.ellipse([centre - r, centre - r, centre + r, centre + r], outline=MAP_RING, width=2 * s)
         if r < size / 2 - 30 * s:
-            draw.text((centre, centre - r - 6 * s), f"{km:,} km", font=small, fill=MUTED, anchor="ms")
+            draw.text(
+                (centre, centre - r - 6 * s),
+                f"{km:,} km",
+                font=small,
+                fill=MAP_RING,
+                anchor="ms",
+                stroke_width=2 * s,
+                stroke_fill=MAP_HALO,
+            )
 
     # Cities inside the map: the nearest major one first, since the panel names it,
     # then the largest, with room kept around the place itself
     nearest = _nearest_major(lat, lon)
     shown = 0
+    taken: list[tuple[float, float, float, float]] = []  # label boxes already drawn
+    pad = 6 * s
     for city in [nearest, *(c for c in data["cities"] if c is not nearest)]:
         name, clat, clon, _population = city
         km = distance_km(lat, lon, clat, clon)
@@ -251,17 +270,42 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
         if shown >= _MAX_CITY_LABELS or km > radius_km * 0.96 or km < closest_allowed:
             continue
         x, y = on_map(clon, clat)
-        draw.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=CREAM)
-        draw.text((x + 12 * s, y), name, font=small, fill=CREAM, anchor="lm")
+        # The name goes right of its dot, or left of it near the map's right edge
+        width = draw.textlength(name, font=small)
+        on_right = x + 12 * s + width < size - 10 * s
+        gap = 12 * s
+        if math.hypot(x - centre, y - centre) < 60 * s:
+            # Close in, the name goes on the city's own side and starts clear of the halo
+            on_right = x >= centre
+            gap = max(gap, 36 * s - abs(x - centre))
+        x0 = x - 5 * s if on_right else x - gap - width
+        x1 = x + gap + width if on_right else x + 5 * s
+        box = (x0 - pad, y - 16 * s - pad, x1 + pad, y + 16 * s + pad)
+        # A name that would run into one already drawn is left off, never the nearest city
+        if city is not nearest and any(
+            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in taken
+        ):
+            continue
+        taken.append(box)
+        draw.ellipse([x - 5 * s, y - 5 * s, x + 5 * s, y + 5 * s], fill=MAP_INK)
+        draw.text(
+            (x + gap if on_right else x - gap, y),
+            name,
+            font=small,
+            fill=MAP_INK,
+            anchor="lm" if on_right else "rm",
+            stroke_width=2 * s,
+            stroke_fill=MAP_HALO,
+        )
         shown += 1
 
     # The place: a dot with a halo
-    for r, colour in ((26, None), (11, ORANGE)):
+    for r, colour in ((26, None), (11, RED)):
         box = [centre - r * s, centre - r * s, centre + r * s, centre + r * s]
         if colour:
-            draw.ellipse(box, fill=colour)
+            draw.ellipse(box, fill=colour, outline=MAP_HALO, width=2 * s)
         else:
-            draw.ellipse(box, outline=ORANGE, width=3 * s)
+            draw.ellipse(box, outline=RED, width=3 * s)
 
     # Everything right of the map is the text panel
     draw.rectangle([size, 0, WIDTH * s, HEIGHT * s], fill=NAVY)
@@ -276,16 +320,16 @@ def render_map_card(place_name: str, lat: float, lon: float, context: str = "") 
     def on_globe(points: list) -> list:
         return [(gx + x * globe_r, gy - y * globe_r) for x, y in points]
 
-    draw.ellipse(disc, fill=SEA)
+    draw.ellipse(disc, fill=MAP_WATER)
     far_side = _far_side_landmass(data["land_coarse"], lat, lon)
     if far_side is not None and (points := projection.globe(far_side)):
-        draw.ellipse(disc, fill=LAND)
-        draw.polygon(on_globe(points), fill=SEA)
+        draw.ellipse(disc, fill=MAP_LAND)
+        draw.polygon(on_globe(points), fill=MAP_WATER)
     for ring in data["land_coarse"]:
         if ring is not far_side and (points := projection.globe(ring)):
-            draw.polygon(on_globe(points), fill=LAND)
+            draw.polygon(on_globe(points), fill=MAP_LAND)
     draw.ellipse([gx - globe_r, gy - globe_r, gx + globe_r, gy + globe_r], outline=RING, width=2 * s)
-    draw.ellipse([gx - 9 * s, gy - 9 * s, gx + 9 * s, gy + 9 * s], fill=ORANGE)
+    draw.ellipse([gx - 9 * s, gy - 9 * s, gx + 9 * s, gy + 9 * s], fill=RED)
 
     # --- Text ----------------------------------------------------------------------
     # The name: as large as fits on two lines

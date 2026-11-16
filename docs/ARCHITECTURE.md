@@ -6,7 +6,7 @@ The README is the user manual and `CLAUDE.md` is a short list of conventions. Th
 
 ## 1. What the system does
 
-Once a day it posts one explainer about an obscure remote settlement to X (Twitter): a single post or a thread of up to four, with a locator map on the first post and a closing reply that names the source.
+Once a day it posts one explainer about an obscure remote settlement to X (Twitter): a single post or a hook and one reply, with a locator map on the first post and a closing reply that names the source.
 
 The hard part is not posting. It is posting only things that are **true** and **interesting**, unattended. Most of the design serves those two goals, under two constraints: the account runs for close to nothing, and no server has to be kept alive.
 
@@ -109,7 +109,7 @@ Both must be yes. It also writes `writer_notes`: the strongest material and anyt
 
 ### 3.5 Writing and fact checking
 
-The writer sees only the brief and the editor's notes. It chooses the length: one post, or a thread of three to four. It opens with the most surprising fact and ends the first post with the question.
+The writer sees only the brief and the editor's notes. It chooses the length: one post, or two: the hook and one reply that answers the question. It opens with the most surprising fact and ends the first post with the question.
 
 Each draft then faces two checks:
 
@@ -290,11 +290,11 @@ Each entry says what was chosen, what it buys, and what it costs.
 - **Why:** narrow questions return faster and between them cover more, which is what the corroboration gate needs.
 - **Cost:** three times the search fee and some duplicated sources (deduplicated by URL and snippet afterwards).
 
-### 8.7 Writer decides length, capped at four
+### 8.7 Writer decides length, capped at two
 
-- **Chosen:** one post or a thread of at most four.
-- **Why:** with a cap of five, every thread came back as five. A cap forces choosing what to leave out. Most readers see only the first post, so the hook carries the most weight.
-- **Cost:** rich places lose material. The cap is a blunt instrument, but the brief is always longer than a thread can hold.
+- **Chosen:** one post, or a hook and one reply. The closing reply with the sources makes three posts in all. The cap was four until November 2026.
+- **Why:** with a cap of five, every thread came back as five, and with four most came back as four. A cap forces choosing what to leave out. Most readers see only the first post, so the hook carries the most weight, and each post costs money on X.
+- **Cost:** rich places lose more material: the reply has 280 characters for the whole answer. The reply cannot spill into the sources post; an allowance like that would be used every time.
 
 ### 8.8 Fact check on every draft, with a bounded rewrite loop
 
@@ -327,7 +327,7 @@ Each entry says what was chosen, what it buys, and what it costs.
 
 ### 8.12 Map cards over photos
 
-- **Chosen:** a locator card drawn from public-domain Natural Earth data, on by default. Photos are an opt-in fallback limited to CC0 and public-domain Commons files (PR #21, #31).
+- **Chosen:** a locator card drawn from public-domain Natural Earth data, on by default. The map reaches at least 2,500 km in every direction and is drawn in light blue and green, with the text panel dark; city names that would overlap are left off (the nearest major city never is). At 1,200 km an island off Chile showed only a strip of coast that could have been anywhere. Photos are an opt-in fallback limited to CC0 and public-domain Commons files (PR #21, #31).
 - **Why:** no licence risk, consistent look, alt text we author ourselves. Posting to X grants X a sublicensable licence that CC BY and CC BY-SA cannot pass on, and attribution slips under older CC versions terminate the licence.
 - **Cost:** a map is less evocative than a photo. Places without Wikipedia coordinates get no card. Mislabelled Commons files remain a residual risk, which is why photos stay off. The card depends on installed fonts (DejaVu on the runner, Arial on macOS), so cards differ slightly by machine.
 

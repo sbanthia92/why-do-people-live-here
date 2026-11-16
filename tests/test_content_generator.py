@@ -17,7 +17,7 @@ from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 
 _ARGS = ("Testville", "Research brief [W].", "Lead with the ferry.")
 _CLEAN = FactCheck(unsupported=[])
-_THREAD = ["Hook about Testville.", "2/ Origin.", "3/ Economy."]
+_THREAD = ["Hook about Testville.", "Origin and economy."]
 
 
 def _flagged(post: int = 2, claim: str = "founded in 1850") -> FactCheck:
@@ -51,11 +51,11 @@ async def test_every_draft_is_fact_checked_against_the_brief() -> None:
     assert _calls(parse) == ["Posts", "FactCheck"]
     check = parse.call_args_list[1].kwargs["user"]
     assert "<research_brief>\nResearch brief [W].\n</research_brief>" in check
-    assert "Post 1: Hook about Testville.\n\nPost 2: 2/ Origin." in check
+    assert "Post 1: Hook about Testville.\n\nPost 2: Origin and economy." in check
 
 
 async def test_unsupported_claim_is_sent_back_with_the_reason() -> None:
-    fixed = ["Hook about Testville.", "2/ Founded in 1858.", "3/ Economy."]
+    fixed = ["Hook about Testville.", "Founded in 1858."]
     parse = _parse(_THREAD, _flagged(), fixed, _CLEAN)
     with patch("pipeline.content_generator.llm.parse", new=parse):
         assert await generate_posts(*_ARGS) == fixed
@@ -113,7 +113,7 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
         side_effect=[
             Posts(posts=["One post."]),
             # 2 is used twice over; 9 matches no source and is ignored
-            Posts(posts=["Hook.", "2/ More.", "3/ End."], sources=[2, 1, 9]),
+            Posts(posts=["Hook.", "More."], sources=[2, 1, 9]),
         ]
     )
 
@@ -133,7 +133,7 @@ async def test_run_content_generation_shapes_single_and_thread() -> None:
         }
         assert await run_content_generation(pool, 1) == {
             "post_text": "Hook.",
-            "thread_parts": ["2/ More.", "3/ End."],
+            "thread_parts": ["More."],
             "sources": ["Example News", "Britannica"],
             "facts": facts,
         }

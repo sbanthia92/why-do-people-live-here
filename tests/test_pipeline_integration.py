@@ -413,6 +413,7 @@ async def test_facts_card_goes_out_next_to_the_map_and_a_preview_is_reused(db, m
     world.figures = ("12", "34", "56", "999")  # 999 is not in the brief, so it is dropped
     world.brief_figures = " It has 12 boats, 34 houses and 56 goats."
     monkeypatch.setenv("PREVIEW_DIR", str(tmp_path))
+    monkeypatch.setenv("FACTS_CARD", "true")  # off by default
 
     with world:
         monkeypatch.setenv("DRY_RUN", "true")

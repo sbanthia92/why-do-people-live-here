@@ -23,8 +23,8 @@ from pipeline.photo_filter import judge_photo, looks_like_not_a_photo, shape_pro
 
 console = Console()
 
-# Photos added to a post, next to the map and facts cards (X allows four images in all)
-MAX_PHOTOS = 2
+# Photos added to a post after the map card (X allows four images in all)
+MAX_PHOTOS = 3
 
 _COMMONS_API = "https://commons.wikimedia.org/w/api.php"
 # Wide enough to post as it is, and what the AI check looks at

@@ -40,11 +40,11 @@ async def test_accepted_photos_are_saved_category_first_up_to_the_limit(monkeypa
     asked = _world(monkeypatch, found)
 
     used = await photos.photos_for_candidate(
-        "Shell, Ecuador", "https://en.wikipedia.org/wiki/Shell%2C_Ecuador", tmp_path
+        "Shell, Ecuador", "https://en.wikipedia.org/wiki/Shell%2C_Ecuador", tmp_path, limit=2
     )
 
     assert asked == ["Shell, Ecuador"]  # the article's title, decoded
-    assert [u["page_url"].rsplit(":", 1)[-1] for u in used] == ["b.jpg", "c.jpg"]
+    assert [u["page_url"].rsplit(":", 1)[-1] for u in used] == ["b.jpg", "c.jpg"]  # limit=2
     assert Path(used[0]["path"]) == tmp_path / "shell--ecuador-photo-1.jpg"
     assert Path(used[0]["path"]).read_bytes() == b"jpegbytes"
     assert used[0]["alt_text"] == "Photo of Shell, Ecuador: a harbour street"

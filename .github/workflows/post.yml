@@ -36,7 +36,8 @@ jobs:
       # "true" adds a link to the Wikipedia article in the closing reply. X charges far
       # more for a post containing a link, so the source is named in text by default.
       SOURCE_LINK: ${{ vars.SOURCE_LINK }}
-      # Set the FACTS_CARD repository variable to "false" to stop attaching the key-facts card.
+      # Set the FACTS_CARD repository variable to "true" to attach the key-facts card as well.
+      # Off by default: the first post lists its figures as numbered lines instead.
       FACTS_CARD: ${{ vars.FACTS_CARD }}
       # Set the POST_IMAGES repository variable to "false" to stop attaching photos. Only
       # public-domain and CC0 photos from Wikimedia Commons are ever used.

@@ -104,13 +104,13 @@ def test_no_card_without_enough_facts(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
-def test_the_card_is_on_unless_switched_off(monkeypatch):
+def test_the_card_is_off_unless_switched_on(monkeypatch):
     monkeypatch.delenv("FACTS_CARD", raising=False)
-    assert facts_card.enabled()
-    monkeypatch.setenv("FACTS_CARD", "")  # how an unset repository variable arrives
-    assert facts_card.enabled()
-    monkeypatch.setenv("FACTS_CARD", "false")
     assert not facts_card.enabled()
+    monkeypatch.setenv("FACTS_CARD", "")  # how an unset repository variable arrives
+    assert not facts_card.enabled()
+    monkeypatch.setenv("FACTS_CARD", "true")
+    assert facts_card.enabled()
 
 
 async def test_a_figure_only_found_inside_a_longer_number_is_dropped():

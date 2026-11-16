@@ -47,9 +47,13 @@ _BARE_YEAR = re.compile(r"(1\d{3}|20\d{2})")
 
 
 def enabled() -> bool:
-    """Whether posts carry a key-facts card (on unless FACTS_CARD=false)."""
-    # An unset repository variable arrives as an empty string, which also means "on"
-    return (os.getenv("FACTS_CARD") or "true").strip().lower() in {"1", "true", "yes"}
+    """Whether posts carry a key-facts card (off unless FACTS_CARD=true).
+
+    Off since the first post began listing its figures as numbered lines: the same facts as
+    text, without two more model calls and a second image.
+    """
+    # An unset repository variable arrives as an empty string, which also means "off"
+    return (os.getenv("FACTS_CARD") or "false").strip().lower() in {"1", "true", "yes"}
 
 
 class KeyFact(BaseModel):

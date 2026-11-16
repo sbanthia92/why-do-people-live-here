@@ -127,7 +127,7 @@ class FakeWorld:
             patch("pipeline.researcher.fetch_wikipedia_extract", new=AsyncMock(return_value="Text.")),
             patch("pipeline.researcher.fetch_web_sources", new=AsyncMock(return_value=source)),
             patch("pipeline.llm.parse", new=self.parse),
-            patch("pipeline.publisher.get_image_for_candidate", new=AsyncMock(return_value=None)),
+            patch("pipeline.publisher.photos_for_candidate", new=AsyncMock(return_value=[])),
             patch("pipeline.publisher.map_card_for_candidate", new=self.map_card),
             patch("pipeline.publisher.post_to_x", new=self.post_to_x),
         ]

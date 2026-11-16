@@ -5,6 +5,8 @@ from pathlib import Path
 
 import httpx
 
+from pipeline import photos as photos_module
+
 _SCRIPT = Path(__file__).parent.parent / "scripts" / "check_images.py"
 _spec = importlib.util.spec_from_file_location("check_images", _SCRIPT)
 check_images = importlib.util.module_from_spec(_spec)
@@ -118,7 +120,7 @@ async def test_only_the_exact_commons_category_is_used_never_a_shorter_name(monk
             asked.append(params["gcmtitle"])
         return []
 
-    monkeypatch.setattr(check_images, "_pages", fake_pages)
+    monkeypatch.setattr(photos_module, "_pages", fake_pages)
 
     await check_images.photos_for(None, "Livingston, Guatemala")
 
@@ -154,7 +156,7 @@ async def test_the_ai_check_keeps_accepted_photos_and_rejects_the_rest_with_its_
         assert (image, media_type) == (b"imagebytes", "image/jpeg")
         return verdicts[name]
 
-    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", fake_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Afton, Nevada", [good, wrong])
 
@@ -169,7 +171,7 @@ async def test_a_photo_the_ai_could_not_check_is_not_accepted(monkeypatch):
     async def failing_judge(*args):
         raise check_images.llm.LLMRefusalError("declined")
 
-    monkeypatch.setattr(check_images, "judge_photo", failing_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", failing_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Alpha", [photo])
 
@@ -184,7 +186,7 @@ async def test_no_more_than_the_limit_goes_to_the_ai(monkeypatch):
         judged.append(name)
         return _Verdict(True)
 
-    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", fake_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Alpha", photos)
 
@@ -206,7 +208,7 @@ async def test_compare_mode_records_the_stronger_models_opinion_and_the_cheap_on
     async def fake_judge(place, image, media_type, name, description, source, model=None):
         return answers[(name, model or check_images.llm.PHOTO_MODEL)]
 
-    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", fake_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Afton, Nevada", [good, wrong], compare=True)
 
@@ -227,7 +229,7 @@ async def test_compare_mode_shows_good_photos_the_cheap_model_would_lose(monkeyp
             return _Verdict(True)
         return _Verdict(False, reason="unsure where", place="unsure")
 
-    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", fake_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Alpha", [photo], compare=True)
 
@@ -244,7 +246,7 @@ async def test_without_compare_the_stronger_model_is_not_called(monkeypatch):
         models.append(model)
         return _Verdict(True)
 
-    monkeypatch.setattr(check_images, "judge_photo", fake_judge)
+    monkeypatch.setattr(photos_module, "judge_photo", fake_judge)
 
     await check_images.check_with_ai(_FakeClient(), "Alpha", [photo])
 

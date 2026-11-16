@@ -34,7 +34,7 @@ For the full component breakdown, data model and the trade-offs behind each deci
 
 **Key-facts card (on by default).** Next to the map, the first post carries a second card drawn by `pipeline/facts_card.py`: the place's three or four most striking figures, such as a price, a count or a record temperature. Each figure is picked from the research brief, must appear in the brief exactly as written, and must pass the same fact check as the posts; at most one figure is a year; a place with fewer than three such figures gets no card. Set the `FACTS_CARD` repository variable (or environment variable) to `false` to turn it off. The cards drawn for a run can be downloaded from the run's `map-cards` artifact.
 
-**Photos (off by default).** Setting `POST_IMAGES=true` lets a place with no map card fall back to the article's lead image, but only a file that, by Commons' own metadata:
+**Photos (on by default, when a place has any).** After the cards, the first post carries up to two photos of the place, drawn by `pipeline/photos.py` from the Wikipedia article and the Commons category named exactly like it. Many places have none that pass, and are posted with the cards alone. Set the `POST_IMAGES` repository variable (or environment variable) to `false` to turn photos off. A photo is used only if an AI check (Claude Haiku) says it is a real photograph of this place with no recognisable person in it, it is at least 800x500 pixels and not a thin strip, and, by Commons' own metadata, it:
 
 - is hosted on Wikimedia Commons (local Wikipedia uploads can be public domain in the US only, or non-free);
 - is CC0 or public domain, with no attribution required;
@@ -43,7 +43,7 @@ For the full component breakdown, data model and the trade-offs behind each deci
 
 To see how many safe photos your recent places actually have, start the `Image check` workflow from the Actions tab (or run `python scripts/check_images.py --state-dir <checkout of the data branch>`). For each place it lists the photos in the Wikipedia article and in the Commons category named exactly like the article (never a shorter name, which can be a different place), and keeps only photos that pass the licence rules above, are at least 800x500 pixels and not a thin strip, are not named like a flag, map or logo (in several languages), and that an AI check says is a real photograph of that place. The AI check sends each remaining photo (up to 12 per place) to Claude Haiku, the cheapest model, which is estimated at about a fortieth of a cent a photo (see the PR for the estimate); it needs the `ANTHROPIC_API_KEY` secret and is skipped without it, and `--no-ai` skips it locally. To make sure the cheap model is good enough, the workflow's `compare_models` option (on by default) also runs Claude Sonnet on the same photos and ends the report with where the two disagree: photos Haiku accepted that Sonnet rejected (a wrong photo could get through) and photos Haiku rejected that Sonnet would have accepted (a good photo lost). That roughly doubles the cost of a run, so turn it off once you trust Haiku. The report lists what each accepted photo shows and why the others were rejected, and attaches small copies of the accepted ones as a downloadable artifact. It posts nothing, and its log shows token counts, not dollars.
 
-Attribution licences (CC BY, CC BY-SA) are refused. Posting to X grants X a licence to pass the image on, which a CC licence does not let you give, and under the older CC versions any slip in the credit ends the licence at once, which some rights holders charge for. With CC0 and public-domain files neither problem arises. The closing reply still names the photographer when Commons gives a name, as a courtesy and without links, and the database records the file's Commons page.
+Attribution licences (CC BY, CC BY-SA) are refused. Posting to X grants X a licence to pass the image on, which a CC licence does not let you give, and under the older CC versions any slip in the credit ends the licence at once, which some rights holders charge for. With CC0 and public-domain files neither problem arises. No credit is required for these files and the closing reply has no room for one; the `posted` issue and the database record each file's Commons page and the licence it had.
 
 What this cannot rule out: a file whose Commons licence is wrong (someone uploaded a photo that was not theirs), or a rights issue Commons has not flagged. Both are rare, and the second is mostly about photos of people, but they are why photos stay off by default.
 
@@ -71,7 +71,7 @@ X's API is pay-per-use: you buy credits and each request draws on them. At the t
 Two settings affect cost and appearance, both off by default:
 
 - `SOURCE_LINK=true` makes the closing reply link to the Wikipedia article instead of naming it. That one post is then charged at the link rate.
-- `POST_IMAGES=true` attaches a CC0 or public-domain photo when there is no map card (see "Images").
+- `POST_IMAGES=false` stops attaching CC0 and public-domain photos (see "Images").
 
 If a thread fails part-way (a rate limit, say), the posts already published stay up and the place is recorded as posted, so the next run does not post the hook a second time.
 

@@ -55,17 +55,27 @@ def test_ordinary_names_are_not_mistaken_for_non_photos(text):
 
 
 def test_only_a_real_photo_of_the_place_is_accepted():
-    def verdict(is_photo, place):
-        return PhotoVerdict(reason="r", is_photo=is_photo, place_match=place, what_it_shows="x")
+    def verdict(is_photo, place, person=False):
+        return PhotoVerdict(
+            reason="r",
+            is_photo=is_photo,
+            place_match=place,
+            recognisable_person=person,
+            what_it_shows="x",
+        )
 
     assert verdict(True, "yes").accepted
     assert not verdict(True, "no").accepted
     assert not verdict(True, "unsure").accepted  # nothing says where it is
     assert not verdict(False, "yes").accepted  # a map of the right place is still no photo
+    # The right place, but someone in it could be recognised: the account posts places, not people
+    assert not verdict(True, "yes", person=True).accepted
 
 
 async def test_the_photo_is_sent_to_the_cheaper_model_with_the_place_and_where_it_came_from():
-    answer = PhotoVerdict(reason="r", is_photo=True, place_match="yes", what_it_shows="a street")
+    answer = PhotoVerdict(
+        reason="r", is_photo=True, place_match="yes", recognisable_person=False, what_it_shows="a street"
+    )
 
     with patch("pipeline.llm.parse", new=AsyncMock(return_value=answer)) as parse:
         result = await judge_photo(

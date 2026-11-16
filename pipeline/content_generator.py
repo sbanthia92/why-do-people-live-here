@@ -1,5 +1,8 @@
 """Generate post copy (a single post or a thread) from the research and the editor's notes."""
 
+import re
+from datetime import UTC, datetime
+
 import anthropic
 from pydantic import BaseModel, Field
 from rich.console import Console
@@ -14,6 +17,10 @@ from pipeline.xtext import MAX_POST_LENGTH, weighted_length
 MAX_POSTS = 2
 # How many times a draft that fails the format or fact check is sent back to the writer
 MAX_REWRITES = 2
+# Numbered figures in the first post. They took the place of the key-facts card: the same
+# figures as text, which can be read without opening an image.
+MAX_FACT_LINES = 3
+_FACT_LINE = re.compile(r"^\s*\d[.)]\s+(.+)$", re.MULTILINE)
 
 console = Console()
 
@@ -59,11 +66,21 @@ numbering.
 {MAX_POSTS}. The brief will hold far more good material than fits. Choosing what to leave \
 out is the job: keep the few facts a reader would repeat to someone else and drop the rest.
 
-With two posts, the first is the hook, and most readers see only that one. Open with \
-the fact that makes living there seem unlikely — not with coordinates, distances or a \
-census figure. Name the place and say where it is in a few words. End it with the \
-question itself: "Why do people live here?", or "Why did people live here?" for an \
-abandoned place. It has to make sense with nothing after it. The second post \
+With two posts, the first is the hook, and most readers see only that one. Figures are \
+easier to take in than sentences, so it is laid out on separate lines:
+- An opening line: the fact that makes living there seem unlikely, naming the place and \
+saying where it is in a few words. Not coordinates.
+- Then up to {MAX_FACT_LINES} numbered lines, "1. ", "2. ", "3. ", each a figure from the brief \
+and what it counts, in a few words: "1. 298 coconut crabs per hectare (2010)". Pick the \
+figures a stranger would repeat: a count, a price, a distance, a temperature, a population. \
+At most one may be a year or a date. Copy each figure exactly as the brief gives it; do not \
+calculate, convert or round, and keep its qualifier ("up to", "about") and its area and year. \
+Skip a figure the brief marks as disputed or gives conflicting values for, and a prediction or \
+deadline whose date has passed. Do not repeat the opening line's figure. With fewer good \
+figures, write fewer lines; never pad.
+- A last line with the question itself: "Why do people live here?", or "Why did people live \
+here?" for an abandoned place.
+It has to make sense with nothing after it. The second post \
 answers the question in full: why the place began or what keeps people there, whichever is \
 the real answer, and the one or two details that make it real. No numbering. End on the \
 strongest fact, not on a summary."""
@@ -106,13 +123,28 @@ For each problem give the post number, the claim as written, and what the brief 
 instead. If the draft is clean, return an empty list."""
 
 
-def _format_problem(posts: list[str]) -> str | None:
-    """Why this draft can't be posted as written, or None if it can."""
+def _format_problem(posts: list[str], raw_research: str | None = None) -> str | None:
+    """Why this draft can't be posted as written, or None if it can.
+
+    With the brief, each numbered figure in the first post must also appear in it as a
+    whole number, exactly as written. The fact check reads the same lines afterwards; this
+    is the check that does not depend on a model.
+    """
     if not 1 <= len(posts) <= MAX_POSTS:
         return f"it had {len(posts)} posts (the limit is {MAX_POSTS})"
     too_long = [i for i, p in enumerate(posts, start=1) if weighted_length(p) > MAX_POST_LENGTH]
     if too_long:
         return f"posts {too_long} were over {MAX_POST_LENGTH} characters"
+    lines = _FACT_LINE.findall(posts[0])
+    if len(lines) > MAX_FACT_LINES:
+        return f"the first post had {len(lines)} numbered lines (the limit is {MAX_FACT_LINES})"
+    if raw_research is not None:
+        for line in lines:
+            if not facts_card._digits_in_brief(line, raw_research):
+                return (
+                    f'the numbered line "{line}" has no figure, or a figure the brief does not'
+                    " give in those digits. Copy it exactly from the brief, or drop the line"
+                )
     return None
 
 
@@ -142,7 +174,7 @@ async def write(place_name: str, raw_research: str, writer_notes: str | None) ->
     ValueError is raised and the place is not posted.
     """
     user = (
-        f"Place: {place_name}\n\n"
+        f"Place: {place_name}\nToday's date: {datetime.now(UTC):%-d %B %Y}\n\n"
         f"<research_brief>\n{raw_research}\n</research_brief>\n\n"
         f"<editor_notes>\n{writer_notes or '(none)'}\n</editor_notes>"
     )
@@ -151,7 +183,7 @@ async def write(place_name: str, raw_research: str, writer_notes: str | None) ->
         draft = await llm.parse(system=_SYSTEM, user=prompt, output_format=Posts)
         posts = draft.posts
 
-        if issue := _format_problem(posts):
+        if issue := _format_problem(posts, raw_research):
             feedback = f"Your previous draft broke the format: {issue}. Fix it."
         else:
             unsupported = await check_facts(place_name, raw_research, posts)
